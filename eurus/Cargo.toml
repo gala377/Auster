@@ -1,9 +1,23 @@
 [package]
 name = "eurus"
 version = "0.1.0"
-authors = ["gala377"]
+authors = ["Rafał Galczak <r.galczak@gmail.com>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lib]
+name = "libeurus"
+path = "src/lib/lib.rs"
+
+[[bin]]
+name = "eurus"
+path = "src/bin/main.rs"
+
 [dependencies]
+hyper = "0.13"
+rand = "0.7"
+serde_json = "1.0"
+paho-mqtt = "0.7"
+tokio = { version = "0.2", features = ["full"]}
+serde = { version = "1.0", features = ["derive"]}
