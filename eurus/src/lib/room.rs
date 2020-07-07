@@ -2,7 +2,7 @@ use rand;
 
 use serde::{Serialize, Deserialize};
 
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct RoomData {
     pub id: usize,
     pub pass: u64,
