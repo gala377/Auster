@@ -7,9 +7,10 @@ use hyper::{
     service::{make_service_fn, service_fn},
     Body, Request, Response, Server,
 };
-use libeurus::{room::RoomsRepository, service::create_new_room};
+use eurus::{room::RoomsRepository, service::create_new_room};
 use serde_json as json;
 use tokio::sync::Mutex;
+
 
 #[tokio::main]
 async fn main() {

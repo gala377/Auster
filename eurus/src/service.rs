@@ -5,10 +5,9 @@ use thiserror::Error;
 use crate::message::{
     self,
     mqtt_adapter::{self, MqttError},
-    Client, ErrorHandling,
+    Client, ErrorHandling, ErrorHandler,
 };
 use crate::room::{RoomData, RoomsRepository};
-use message::ErrorHandler;
 
 #[derive(Error, Debug)]
 pub enum RoomCreationError {
