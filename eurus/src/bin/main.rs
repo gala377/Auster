@@ -1,28 +1,15 @@
 use std::convert::Infallible;
 use std::net::SocketAddr;
-use std::{sync::Arc};
+use std::sync::Arc;
 
+use hyper::{
+    http::{response, StatusCode},
+    service::{make_service_fn, service_fn},
+    Body, Request, Response, Server,
+};
+use libeurus::{room::RoomsRepository, service::create_new_room};
 use serde_json as json;
 use tokio::sync::Mutex;
-use hyper::{
-    Body,
-    Request,
-    Response,
-    http::{
-        response,
-        StatusCode,
-    },
-    Server,
-    service::{
-        make_service_fn,
-        service_fn,
-    },
-};
-use libeurus::{
-    room::RoomsRepository,
-    service::create_new_room,
-};
-
 
 #[tokio::main]
 async fn main() {
@@ -32,14 +19,10 @@ async fn main() {
         make_service_fn(move |_| {
             let rep = Arc::clone(&room_rep);
             async move {
-                Ok::<_, Infallible>(service_fn(
-                    move |req| {
-                        let rep = Arc::clone(&rep);
-                        async move {
-                            handle_req(req, rep).await
-                        }
-                    }
-                ))
+                Ok::<_, Infallible>(service_fn(move |req| {
+                    let rep = Arc::clone(&rep);
+                    async move { handle_req(req, rep).await }
+                }))
             }
         })
     };
@@ -51,7 +34,10 @@ async fn main() {
     }
 }
 
-async fn handle_req(_req: Request<Body>, rep: Arc<Mutex<RoomsRepository>>) -> Result<Response<Body>, Infallible> {
+async fn handle_req(
+    _req: Request<Body>,
+    rep: Arc<Mutex<RoomsRepository>>,
+) -> Result<Response<Body>, Infallible> {
     let body = {
         let mut rep = rep.lock().await;
         match create_new_room(&mut rep) {
@@ -67,14 +53,13 @@ async fn handle_req(_req: Request<Body>, rep: Arc<Mutex<RoomsRepository>>) -> Re
             }
         }
     };
-    let resp = Response::new(
-        Body::from(json::to_string(&body).unwrap()));
+    let resp = Response::new(Body::from(json::to_string(&body).unwrap()));
     Ok(resp)
 }
 
-
 async fn shutdown_singal() {
-    tokio::signal::ctrl_c().await
+    tokio::signal::ctrl_c()
+        .await
         .expect("failed to install ctrl+c signal handler");
     println!("CTRL+C, shutting down");
 }

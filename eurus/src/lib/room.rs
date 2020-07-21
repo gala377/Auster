@@ -1,6 +1,6 @@
 use rand;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct RoomData {
@@ -25,7 +25,6 @@ pub struct RoomsRepository {
     rooms: Vec<Option<RoomData>>,
 }
 
-
 impl RoomsRepository {
     pub fn new() -> Self {
         Self { rooms: Vec::new() }
@@ -45,13 +44,13 @@ impl RoomsRepository {
                 let rd = RoomData::new(i);
                 self.rooms[i] = Some(rd.clone());
                 rd
-            },
+            }
             None => {
                 let rd = RoomData::new(self.rooms.len());
                 self.rooms.push(Some(rd.clone()));
                 rd
             }
-        } 
+        }
     }
 
     fn find_empy_space(&self) -> Option<usize> {
@@ -74,6 +73,3 @@ impl RoomsRepository {
         None
     }
 }
-
-
-
