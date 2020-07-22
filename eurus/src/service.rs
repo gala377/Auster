@@ -1,6 +1,7 @@
 use std::thread::JoinHandle;
 
 use thiserror::Error;
+use log::{info, debug, error};
 
 use crate::message::{
     self,
@@ -30,16 +31,16 @@ fn start_room_rt(rd: RoomData) -> Result<JoinHandle<()>, RoomCreationError> {
     let messages = cli.connect()?;
     cli.subscribe(vec!["test/room/0".into(), "room/0".into()])?;
     let handle = std::thread::spawn(move || {
-        println!("[rd-rt-{}] Hey my room is {:?}", rd.id, rd);
-        println!("[rd-rt-{}] Waiting for messages", rd.id);
+        info!("[rd-rt-{}] Created new room: {:?}", rd.id, rd);
+        debug!("[rd-rt-{}] Waiting for messages", rd.id);
         for msg in messages {
-            println!("[rd-rt-{}] Got message", rd.id);
+            debug!("[rd-rt-{}] Got message", rd.id);
             match msg {
                 Err(err) => match mqtt_adapter::MqttErrorHandler::handle_err(&mut cli, err) {
                     ErrorHandling::Abort => {
                         if cli.is_connected() {
-                            println!("[rd-rt-{}] Disconnecting", rd.id);
-                            // todo: unsunscribe from topics here
+                            info!("[rd-rt-{}] Disconnecting", rd.id);
+                            // todo: unsubscribe from topics here
                             cli.disconnect().unwrap();
                         }
                         // todo: uncomment if we ever join on errors returned
@@ -57,5 +58,5 @@ fn start_room_rt(rd: RoomData) -> Result<JoinHandle<()>, RoomCreationError> {
 }
 
 fn handle_mess(_cli: &mut impl message::Client, msg: message::SubMsg) {
-    println!("Got msg: {:?}", msg);
+    debug!("Got msg: {:?}", msg);
 }

@@ -2,6 +2,7 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 use thiserror::Error;
+use log::{info, error, debug, warn};
 
 use mqtt::errors::MqttError as RawMqttError;
 use paho_mqtt as mqtt;
@@ -13,7 +14,7 @@ use crate::room::RoomData;
 // Private static nad const values
 //
 const CONN_RETRIES: usize = 12;
-const RETRIE_WAIT_MS: u64 = 5000;
+const RETRY_WAIT_MS: u64 = 5000;
 
 //
 // Private Pahu type aliases
@@ -39,15 +40,15 @@ impl MqttClient {
     }
 
     pub fn try_reconnect(&mut self) -> bool {
-        println!("Connection lost trying to reconnect");
+        warn!("Connection lost trying to reconnect");
         for _ in 0..CONN_RETRIES {
-            std::thread::sleep(Duration::from_millis(RETRIE_WAIT_MS));
+            std::thread::sleep(Duration::from_millis(RETRY_WAIT_MS));
             if self.cli.reconnect().is_ok() {
-                println!("Successfully reconnected");
+                info!("Successfully reconnected");
                 return true;
             }
         }
-        println!("Unable to reconnnect after several attempts");
+        error!("Unable to reconnnect after several attempts");
         false
     }
 }
@@ -74,10 +75,10 @@ impl message::Client for MqttClient {
     fn subscribe(&mut self, channels: Vec<String>) -> Result<(), MqttError> {
         let qos: Vec<i32> = vec![2; channels.len()];
         match self.cli.subscribe_many(&channels, &qos) {
-            Ok(qosv) => println!("QoS granted: {:?}", qosv),
+            Ok(qosv) => debug!("QoS granted: {:?}", qosv),
             Err(e) => {
-                println!("Error subscribing to topics {:?}", e);
-                println!("Disconnecting");
+                error!("Error subscribing to topics {:?}", e);
+                debug!("Disconnecting");
                 self.cli.disconnect(None).unwrap();
                 return Err(MqttError::from(e));
             }
@@ -181,13 +182,13 @@ impl ErrorHandler for MqttErrorHandler {
     fn handle_err(cli: &mut MqttClient, err: MqttError) -> ErrorHandling {
         match err {
             MqttError::MsgDecodingError(err) => {
-                println!("[rd-rt-{}] {}", cli.rd.id, err);
+                error!("[rd-rt-{}] {}", cli.rd.id, err);
                 ErrorHandling::Skip
             }
             MqttError::ConnectionError(err) => handle_err_abort(cli, err),
             err @ MqttError::ConnectionReset => {
                 if cli.is_connected() || !cli.try_reconnect() {
-                    println!("[rd-rt-{}] channel died", cli.rd.id);
+                    warn!("[rd-rt-{}] channel died", cli.rd.id);
                     handle_err_abort(cli, err)
                 } else {
                     ErrorHandling::Skip
@@ -198,6 +199,6 @@ impl ErrorHandler for MqttErrorHandler {
 }
 
 fn handle_err_abort(cli: &mut MqttClient, err: impl std::error::Error) -> ErrorHandling {
-    println!("[rd-rt-{}] {}", cli.rd.id, err);
+    error!("[rd-rt-{}] {}", cli.rd.id, err);
     ErrorHandling::Abort
 }

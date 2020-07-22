@@ -7,13 +7,42 @@ use hyper::{
     service::{make_service_fn, service_fn},
     Body, Request, Response, Server,
 };
-use eurus::{room::RoomsRepository, service::create_new_room};
+use log::{info, error};
 use serde_json as json;
 use tokio::sync::Mutex;
 
 
+use eurus::{room::RoomsRepository, service::create_new_room};
+
 #[tokio::main]
 async fn main() {
+    if let Err(e) = setup_logger() {
+        eprintln!("logger couldn't be setup {}", e);
+        return;
+    }
+    if let Err(e) = run_server().await {
+        error!("server error: {}", e);
+    }
+}
+
+fn setup_logger() -> Result<(), fern::InitError> {
+    fern::Dispatch::new()
+        .format(|out, message, record| {
+            out.finish(format_args!(
+                "{}[{}][{}] {}",
+                chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
+                record.target(),
+                record.level(),
+                message
+            ))
+        })
+        .level(log::LevelFilter::Debug)
+        .chain(std::io::stdout())
+        .apply()?;
+    Ok(())
+}
+
+async fn run_server() -> Result<(), hyper::Error> {
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     let make_svc = {
         let room_rep = Arc::new(Mutex::new(RoomsRepository::new()));
@@ -29,23 +58,23 @@ async fn main() {
     };
     let server = Server::bind(&addr).serve(make_svc);
     let server = server.with_graceful_shutdown(shutdown_singal());
-    println!("Starting server");
-    if let Err(e) = server.await {
-        println!("server error: {}", e);
-    }
-}
+    server.await
+} 
 
 async fn handle_req(
     _req: Request<Body>,
     rep: Arc<Mutex<RoomsRepository>>,
 ) -> Result<Response<Body>, Infallible> {
     let body = {
+        // XXX: lock is here just because RoomRepository
+        // is a global in memory resource.
+        // If we could move to different service or
+        // a database for example a lock would not we needed.
         let mut rep = rep.lock().await;
         match create_new_room(&mut rep) {
             Ok(rd) => rd,
-            Err(_e) => {
-                // todo: Write error msg
-                println!("There was en error while creating a new room");
+            Err(e) => {
+                error!("There was en error while creating a new room: {}", e);
                 let resp = response::Builder::new()
                     .status(StatusCode::INTERNAL_SERVER_ERROR)
                     .body(Body::from("{\"error\": \"Internal server error\"}"))
@@ -62,5 +91,5 @@ async fn shutdown_singal() {
     tokio::signal::ctrl_c()
         .await
         .expect("failed to install ctrl+c signal handler");
-    println!("CTRL+C, shutting down");
+    info!("CTRL+C pressed. Shutting down...");
 }
