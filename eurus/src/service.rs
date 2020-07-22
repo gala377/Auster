@@ -1,12 +1,12 @@
 use std::thread::JoinHandle;
 
+use log::{debug, error, info};
 use thiserror::Error;
-use log::{info, debug, error};
 
 use crate::message::{
     self,
     mqtt_adapter::{self, MqttError},
-    Client, ErrorHandling, ErrorHandler,
+    Client, ErrorHandler, ErrorHandling,
 };
 use crate::room::{RoomData, RoomsRepository};
 
@@ -26,37 +26,61 @@ pub fn create_new_room(rep: &mut RoomsRepository) -> Result<RoomData, RoomCreati
     Ok(rd)
 }
 
+macro_rules! exec_err_strategy {
+    ($rd:expr, $cli:expr, $e:expr) => {
+        match $e {
+            ErrorHandling::Abort => {
+                if $cli.is_connected() {
+                    info!("[rd-rt-{}] Disconnecting", $rd.id);
+                    // todo: unsubscribe from topics here
+                    $cli.disconnect().unwrap();
+                }
+                // todo: uncomment if we ever join on errors returned
+                // by handles
+                // return RoomCreationError::from(err);
+                break;
+            }
+            _ => (),
+        }
+    };
+}
+
 fn start_room_rt(rd: RoomData) -> Result<JoinHandle<()>, RoomCreationError> {
     let mut cli = mqtt_adapter::MqttClient::new(&rd)?;
     let messages = cli.connect()?;
-    cli.subscribe(vec!["test/room/0".into(), "room/0".into()])?;
+    cli.subscribe(vec![format!("room/{}", rd.id).into()])?;
+    
+    // todo: pls delete, jsut for debug purposes
+    cli.publish(format!("room/{}", rd.id), message::PubMsg::Hey.into())?;
+    
     let handle = std::thread::spawn(move || {
         info!("[rd-rt-{}] Created new room: {:?}", rd.id, rd);
         debug!("[rd-rt-{}] Waiting for messages", rd.id);
         for msg in messages {
-            debug!("[rd-rt-{}] Got message", rd.id);
+            info!("[rd-rt-{}] Got message", rd.id);
             match msg {
-                Err(err) => match mqtt_adapter::MqttErrorHandler::handle_err(&mut cli, err) {
-                    ErrorHandling::Abort => {
-                        if cli.is_connected() {
-                            info!("[rd-rt-{}] Disconnecting", rd.id);
-                            // todo: unsubscribe from topics here
-                            cli.disconnect().unwrap();
-                        }
-                        // todo: uncomment if we ever join on errors returned
-                        // by handles
-                        // return RoomCreationError::from(err);
-                        break;
-                    }
-                    _ => (),
-                },
-                Ok(msg) => handle_mess(&mut cli, msg),
+                Err(err) => exec_err_strategy!(
+                    rd,
+                    cli,
+                    mqtt_adapter::MqttErrorHandler::handle_err(&mut cli, err)
+                ),
+                Ok((channel, msg)) => {
+                    exec_err_strategy!(rd, cli, handle_mess(&mut cli, msg, channel))
+                }
             }
         }
     });
     Ok(handle)
 }
 
-fn handle_mess(_cli: &mut impl message::Client, msg: message::SubMsg) {
-    debug!("Got msg: {:?}", msg);
+fn handle_mess(
+    cli: &mut impl message::Client,
+    msg: message::SubMsg,
+    channel: String,
+) -> ErrorHandling {
+    info!("Got msg: {:?} from channel {}", msg, channel);
+    if let Err(e) = cli.publish(channel, message::PubMsg::Hey.into()) {
+        error!("couldn't publish message {}", e);
+    }
+    ErrorHandling::Skip
 }

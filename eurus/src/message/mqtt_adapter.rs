@@ -1,8 +1,8 @@
 use std::sync::mpsc;
 use std::time::Duration;
 
+use log::{debug, error, info, warn};
 use thiserror::Error;
-use log::{info, error, debug, warn};
 
 use mqtt::errors::MqttError as RawMqttError;
 use paho_mqtt as mqtt;
@@ -102,7 +102,7 @@ pub struct MqttRecvChannel(PahuRecvIter);
 
 impl Iterator for MqttRecvChannel {
     // todo: Change it to Result and handle cases aproprietly
-    type Item = Result<message::SubMsg, MqttError>;
+    type Item = Result<(String, message::SubMsg), MqttError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.0
@@ -166,9 +166,12 @@ fn get_connection_options(lwt: mqtt::Message) -> mqtt::ConnectOptions {
         .finalize()
 }
 
-fn handle_msg(msg: Option<mqtt::Message>) -> Result<message::SubMsg, MqttError> {
+fn handle_msg(msg: Option<mqtt::Message>) -> Result<(String, message::SubMsg), MqttError> {
     match msg {
-        Some(val) => Ok(serde_json::from_str(val.payload_str().as_ref())?),
+        Some(val) => Ok((
+            val.topic().into(),
+            serde_json::from_str(val.payload_str().as_ref())?,
+        )),
         None => Err(MqttError::ConnectionReset),
     }
 }

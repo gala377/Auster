@@ -2,15 +2,15 @@ use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+use fern::colors::{Color, ColoredLevelConfig};
 use hyper::{
     http::{response, StatusCode},
     service::{make_service_fn, service_fn},
     Body, Request, Response, Server,
 };
-use log::{info, error};
+use log::{error, info};
 use serde_json as json;
 use tokio::sync::Mutex;
-
 
 use eurus::{room::RoomsRepository, service::create_new_room};
 
@@ -26,10 +26,15 @@ async fn main() {
 }
 
 fn setup_logger() -> Result<(), fern::InitError> {
+    let colors = ColoredLevelConfig::new()
+        .warn(Color::Yellow)
+        .error(Color::Red)
+        .info(Color::Green);
     fern::Dispatch::new()
-        .format(|out, message, record| {
+        .format(move |out, message, record| {
             out.finish(format_args!(
-                "{}[{}][{}] {}",
+                "{}{}[{}][{}] {}\x1B[0m",
+                format_args!("\x1B[{}m", colors.get_color(&record.level()).to_fg_str()),
                 chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
                 record.target(),
                 record.level(),
@@ -37,6 +42,8 @@ fn setup_logger() -> Result<(), fern::InitError> {
             ))
         })
         .level(log::LevelFilter::Debug)
+        .level_for("hyber", log::LevelFilter::Warn)
+        .level_for("paho_mqtt", log::LevelFilter::Warn)
         .chain(std::io::stdout())
         .apply()?;
     Ok(())
@@ -59,7 +66,7 @@ async fn run_server() -> Result<(), hyper::Error> {
     let server = Server::bind(&addr).serve(make_svc);
     let server = server.with_graceful_shutdown(shutdown_singal());
     server.await
-} 
+}
 
 async fn handle_req(
     _req: Request<Body>,
