@@ -31,8 +31,8 @@ pub struct MqttClient {
 }
 
 impl MqttClient {
-    pub fn new(rd: &RoomData) -> Result<Self, MqttError> {
-        let cli = create_mqtt_client(&rd)?;
+    pub fn new(rd: &RoomData, host: String) -> Result<Self, MqttError> {
+        let cli = create_mqtt_client(&rd, host)?;
         Ok(Self {
             cli,
             rd: rd.clone(),
@@ -113,9 +113,9 @@ impl Iterator for MqttRecvChannel {
 
 #[derive(Error, Debug)]
 pub enum MqttError {
-    #[error("connection error: `{0}`")]
+    #[error("connection error {0}")]
     ConnectionError(#[from] RawMqttError),
-    #[error("couldn't decode incoming msg: `{0}`")]
+    #[error("couldn't decode incoming msg {0}")]
     MsgDecodingError(#[from] serde_json::Error),
     #[error("connection was reset")]
     ConnectionReset,
@@ -125,8 +125,7 @@ pub enum MqttError {
 // Helper functions on pahu_mqtt api
 //
 
-fn create_mqtt_client(rd: &RoomData) -> Result<mqtt::Client, MqttError> {
-    let host = "tcp://localhost:1883"; // todo get from config
+fn create_mqtt_client(rd: &RoomData, host: String) -> Result<mqtt::Client, MqttError> {
     let create_opts = get_creation_mqtt_options(host, rd);
     let cli = mqtt::Client::new(create_opts)?;
     Ok(cli)

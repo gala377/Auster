@@ -25,3 +25,5 @@ thiserror = "1.0"
 log = "0.4"
 fern = { version = "0.5", features = ["colored"]}
 chrono = "0.4"
+toml = "0.5"
+anyhow = "1.0"

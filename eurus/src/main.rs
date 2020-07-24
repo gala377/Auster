@@ -1,6 +1,7 @@
-use std::convert::Infallible;
-use std::net::SocketAddr;
-use std::sync::Arc;
+use std::{
+    convert::Infallible, net::SocketAddr, path::Path, str::FromStr,
+    sync::Arc,
+};
 
 use fern::colors::{Color, ColoredLevelConfig};
 use hyper::{
@@ -12,20 +13,33 @@ use log::{error, info};
 use serde_json as json;
 use tokio::sync::Mutex;
 
-use eurus::{room::RoomsRepository, service::create_new_room};
+use eurus::{config::Config, room::RoomsRepository, service::create_new_room};
 
 #[tokio::main]
 async fn main() {
-    if let Err(e) = setup_logger() {
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() < 2 {
+        eprintln!("Usage 'eurus config_path'");
+        return;
+    }
+    let path = &args[1];
+    let config = match read_config(path) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("config couldn't be read {}", e);
+            return;
+        }
+    };
+    if let Err(e) = setup_logger(&config) {
         eprintln!("logger couldn't be setup {}", e);
         return;
     }
-    if let Err(e) = run_server().await {
+    if let Err(e) = run_server(&config).await {
         error!("server error: {}", e);
     }
 }
 
-fn setup_logger() -> Result<(), fern::InitError> {
+fn setup_logger(_config: &Config) -> Result<(), fern::InitError> {
     let colors = ColoredLevelConfig::new()
         .warn(Color::Yellow)
         .error(Color::Red)
@@ -49,28 +63,37 @@ fn setup_logger() -> Result<(), fern::InitError> {
     Ok(())
 }
 
-async fn run_server() -> Result<(), hyper::Error> {
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+fn read_config<P: AsRef<Path>>(path: P) -> anyhow::Result<Config> {
+    let bytes = std::fs::read(path)?;
+    let contents = std::str::from_utf8(&bytes)?;
+    Ok(toml::from_str(contents)?)
+}
+
+async fn run_server(config: &Config) -> anyhow::Result<()> {
+    let addr = SocketAddr::from_str(&config.runtime.server_address)?;
     let make_svc = {
         let room_rep = Arc::new(Mutex::new(RoomsRepository::new()));
         make_service_fn(move |_| {
             let rep = Arc::clone(&room_rep);
+            let conf = config.clone();
             async move {
                 Ok::<_, Infallible>(service_fn(move |req| {
                     let rep = Arc::clone(&rep);
-                    async move { handle_req(req, rep).await }
+                    let conf = conf.clone();
+                    async move { handle_req(req, rep, conf).await }
                 }))
             }
         })
     };
     let server = Server::bind(&addr).serve(make_svc);
     let server = server.with_graceful_shutdown(shutdown_singal());
-    server.await
+    Ok(server.await?)
 }
 
 async fn handle_req(
     _req: Request<Body>,
     rep: Arc<Mutex<RoomsRepository>>,
+    config: Config,
 ) -> Result<Response<Body>, Infallible> {
     let body = {
         // XXX: lock is here just because RoomRepository
@@ -78,7 +101,7 @@ async fn handle_req(
         // If we could move to different service or
         // a database for example a lock would not we needed.
         let mut rep = rep.lock().await;
-        match create_new_room(&mut rep) {
+        match create_new_room(&mut rep, config) {
             Ok(rd) => rd,
             Err(e) => {
                 error!("There was en error while creating a new room: {}", e);

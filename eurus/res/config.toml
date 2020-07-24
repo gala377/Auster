@@ -1,0 +1,8 @@
+[mqtt]
+host = "tcp://localhost:1883"
+user = ""
+password = ""
+
+[runtime]
+server_address = "127.0.0.1:3000"
+room_channel_prefix = "room"

@@ -8,18 +8,24 @@ use crate::message::{
     mqtt_adapter::{self, MqttError},
     Client, ErrorHandler, ErrorHandling,
 };
-use crate::room::{RoomData, RoomsRepository};
+use crate::{
+    config::Config,
+    room::{RoomData, RoomsRepository},
+};
 
 #[derive(Error, Debug)]
 pub enum RoomCreationError {
-    #[error("Connection error: `{0}`")]
+    #[error("{0}")]
     MqqtConnectionError(#[from] MqttError),
 }
 
-pub fn create_new_room(rep: &mut RoomsRepository) -> Result<RoomData, RoomCreationError> {
+pub fn create_new_room(
+    rep: &mut RoomsRepository,
+    config: Config,
+) -> Result<RoomData, RoomCreationError> {
     let rd = rep.create_room();
     use RoomCreationError::*;
-    if let Err(err @ MqqtConnectionError(_)) = start_room_rt(rd.clone()) {
+    if let Err(err @ MqqtConnectionError(_)) = start_room_rt(rd.clone(), config) {
         rep.remove(rd);
         return Err(err);
     }
@@ -45,14 +51,19 @@ macro_rules! exec_err_strategy {
     };
 }
 
-fn start_room_rt(rd: RoomData) -> Result<JoinHandle<()>, RoomCreationError> {
-    let mut cli = mqtt_adapter::MqttClient::new(&rd)?;
+fn start_room_rt(rd: RoomData, config: Config) -> Result<JoinHandle<()>, RoomCreationError> {
+    let mut cli = mqtt_adapter::MqttClient::new(&rd, config.mqtt.host)?;
     let messages = cli.connect()?;
-    cli.subscribe(vec![format!("room/{}", rd.id).into()])?;
-    
-    // todo: pls delete, jsut for debug purposes
-    cli.publish(format!("room/{}", rd.id), message::PubMsg::Hey.into())?;
-    
+    cli.subscribe(vec![format!(
+        "{}/{}",
+        config.runtime.room_channel_prefix, rd.id
+    )
+    .into()])?;
+    cli.publish(
+        format!("{}/{}", config.runtime.room_channel_prefix, rd.id),
+        message::PubMsg::Hey.into(),
+    )?;
+
     let handle = std::thread::spawn(move || {
         info!("[rd-rt-{}] Created new room: {:?}", rd.id, rd);
         debug!("[rd-rt-{}] Waiting for messages", rd.id);
