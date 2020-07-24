@@ -1,14 +1,15 @@
 # Issues
 
-- We need some proper error handling, maybe use some of the rust libraries
-    like anyhow or smth. Now it's just a mess. 
+## MQTT things
 
-    The best solution would be to use `thiserror` for library code
-    and `anyhow` for application code.
-
-- and there is a lot of magic numbers like the mqtt paths in `mqtt_adapter`
-
-- add configuration from a file
-
+- mongodb or mysql integration
+- mqtt authorization
+- creating temporatry users for the runtime and the game
 - use redis resistance a sith wont clutter project directory
     https://github.com/fpagliughi/mqtt.rust.redis
+
+## General
+
+- when mqtt side of things is finished we can write game state
+- after game state comes game logic
+- then we can write simple client
