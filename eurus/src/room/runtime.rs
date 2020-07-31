@@ -1,4 +1,4 @@
-use log::{error, info};
+use log::info;
 
 use crate::{
     client::{
@@ -16,7 +16,7 @@ pub struct Runtime {
     _config: Config,
 }
 
-type RawMsg = Result<(String, message::SubMsg), MqttError>;
+type RawMsg = Result<(String, message::Request), MqttError>;
 
 impl Runtime {
     pub fn new(rd: RoomData, config: Config) -> Self {
@@ -35,13 +35,10 @@ impl Runtime {
 }
 
 fn handle_mess(
-    cli: &mut impl client::Client,
-    msg: message::SubMsg,
+    _cli: &mut impl client::Client,
+    msg: message::Request,
     channel: String,
 ) -> ErrorHandling {
     info!("Got msg: {:?} from channel {}", msg, channel);
-    if let Err(e) = cli.publish(channel, message::PubMsg::Hey.into()) {
-        error!("couldn't publish message {}", e);
-    }
     ErrorHandling::Skip
 }

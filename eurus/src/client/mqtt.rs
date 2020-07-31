@@ -93,8 +93,7 @@ impl Client for MqttClient {
         Ok(())
     }
 
-    fn publish(&mut self, channel: String, msg: message::PubMsg) -> Result<()> {
-        let msg = serde_json::to_string(&msg)?;
+    fn publish(&mut self, channel: String, msg: String) -> Result<()> {
         let msg = mqtt::MessageBuilder::new()
             .topic(channel)
             .payload(msg)
@@ -108,7 +107,7 @@ impl Client for MqttClient {
 pub struct MqttRecvChannel(PahuRecvIter);
 
 impl Iterator for MqttRecvChannel {
-    type Item = Result<(String, message::SubMsg)>;
+    type Item = Result<(String, message::Request)>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.0
@@ -168,7 +167,7 @@ fn get_connection_options(lwt: mqtt::Message) -> mqtt::ConnectOptions {
         .finalize()
 }
 
-fn parse_msg(msg: Option<mqtt::Message>) -> Result<(String, message::SubMsg)> {
+fn parse_msg(msg: Option<mqtt::Message>) -> Result<(String, message::Request)> {
     match msg {
         Some(val) => Ok((
             val.topic().into(),

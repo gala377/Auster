@@ -16,7 +16,9 @@ use crate::{
 #[derive(Error, Debug)]
 pub enum RoomCreationError {
     #[error("{0}")]
-    MqqtConnectionError(#[from] MqttError),
+    MqttConnectionError(#[from] MqttError),
+    #[error("Could not encode the message {0}")]
+    MsgEncodingError(#[from] serde_json::Error),
 }
 
 pub fn create_new_room(
@@ -24,8 +26,7 @@ pub fn create_new_room(
     config: Config,
 ) -> Result<RoomData, RoomCreationError> {
     let rd = rep.create_room();
-    use RoomCreationError::*;
-    if let Err(err @ MqqtConnectionError(_)) = start_room_rt(rd.clone(), config) {
+    if let Err(err) = start_room_rt(rd.clone(), config) {
         rep.remove(rd);
         return Err(err);
     }
@@ -61,10 +62,10 @@ fn get_mqtt_client(rd: &RoomData, config: &Config) -> Result<MqttClient, RoomCre
     let channel_prefix = &config.runtime.room_channel_prefix;
     let mut cli = MqttClient::new(rd, &config.mqtt.host)?;
     cli.connect()?;
-    cli.subscribe(vec![format!("{}/{}", channel_prefix, rd.id)])?;
+    cli.subscribe(vec![format!("{}/{}/rt/write", channel_prefix, rd.id)])?;
     cli.publish(
-        format!("{}/{}", channel_prefix, rd.id),
-        message::PubMsg::Hey.into(),
+        format!("{}/{}/rt/read", channel_prefix, rd.id),
+        serde_json::to_string(&message::Response::RuntimeStarted)?,
     )?;
     Ok(cli)
 }

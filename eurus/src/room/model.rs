@@ -6,8 +6,8 @@ pub type PlayerId = usize;
 pub type AnswerId = usize;
 
 pub struct Room {
-    pub id: RoomId, // on room creation
-    pub pass: u128, // on room creation
+    pub id: RoomId,           // on room creation
+    pub pass: u128,           // on room creation
     pub players_limit: usize, // on room creation
     pub players: Vec<Player>,
     pub rounds_limt: usize,
@@ -43,7 +43,6 @@ pub struct Round {
     pub answers: HashMap<PlayerId, Answer>,
     pub polls: HashMap<PlayerId, AnswerId>,
 }
-
 
 pub struct Answer {
     pub id: AnswerId,

@@ -1,4 +1,3 @@
-use crate::message::PubMsg;
 use std::error::Error;
 
 pub mod mqtt;
@@ -19,7 +18,7 @@ pub trait Client {
     fn iter_msg(&mut self) -> Self::Iter;
 
     /// Publish message in to the specified channel.
-    fn publish(&mut self, channel: String, msg: PubMsg) -> Result<(), Self::ClientError>;
+    fn publish(&mut self, channel: String, msg: String) -> Result<(), Self::ClientError>;
 
     /// Subscribe to the specified channels.
     /// Messages should be received from the iterator
