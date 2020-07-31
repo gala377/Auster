@@ -3,6 +3,7 @@ use rand;
 use serde::{Deserialize, Serialize};
 
 pub mod runtime;
+pub mod model;
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct RoomData {
