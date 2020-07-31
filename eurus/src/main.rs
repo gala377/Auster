@@ -1,7 +1,4 @@
-use std::{
-    convert::Infallible, net::SocketAddr, path::Path, str::FromStr,
-    sync::Arc,
-};
+use std::{convert::Infallible, net::SocketAddr, path::Path, str::FromStr, sync::Arc};
 
 use fern::colors::{Color, ColoredLevelConfig};
 use hyper::{
@@ -71,10 +68,8 @@ fn read_config<P: AsRef<Path>>(path: P) -> anyhow::Result<Config> {
 
 async fn run_server(config: &Config) -> anyhow::Result<()> {
     let addr = SocketAddr::from_str(&config.runtime.server_address)?;
-    let make_svc = {
-        let room_rep = Arc::new(Mutex::new(RoomsRepository::new()));
-        make_service_fn(move |_| {
-            let rep = Arc::clone(&room_rep);
+    let make_svc = make_service_fn(move |_| {
+            let rep = Arc::new(Mutex::new(RoomsRepository::new()));
             let conf = config.clone();
             async move {
                 Ok::<_, Infallible>(service_fn(move |req| {
@@ -83,8 +78,7 @@ async fn run_server(config: &Config) -> anyhow::Result<()> {
                     async move { handle_req(req, rep, conf).await }
                 }))
             }
-        })
-    };
+        });
     let server = Server::bind(&addr).serve(make_svc);
     let server = server.with_graceful_shutdown(shutdown_singal());
     Ok(server.await?)
@@ -99,7 +93,7 @@ async fn handle_req(
         // XXX: lock is here just because RoomRepository
         // is a global in memory resource.
         // If we could move to different service or
-        // a database for example a lock would not we needed.
+        // a database for example a lock would be unnecessary.
         let mut rep = rep.lock().await;
         match create_new_room(&mut rep, config) {
             Ok(rd) => rd,

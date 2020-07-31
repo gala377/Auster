@@ -1,4 +1,6 @@
 pub mod config;
-pub(crate) mod message;
 pub mod room;
 pub mod service;
+
+pub(crate) mod client;
+pub(crate) mod message;

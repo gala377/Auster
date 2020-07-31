@@ -7,8 +7,11 @@ use thiserror::Error;
 use mqtt::errors::MqttError as RawMqttError;
 use paho_mqtt as mqtt;
 
-use crate::message::{self, Client, ErrorHandler, ErrorHandling};
-use crate::room::RoomData;
+use crate::{
+    client::{Client, ErrorHandler, ErrorHandling},
+    message,
+    room::RoomData,
+};
 
 //
 // Private static nad const values
@@ -19,8 +22,9 @@ const RETRY_WAIT_MS: u64 = 5000;
 //
 // Private Pahu type aliases
 //
-type PahuRecvChannel = mpsc::Receiver<Option<mqtt::Message>>;
 type PahuRecvIter = mpsc::IntoIter<Option<mqtt::Message>>;
+
+type Result<T> = std::result::Result<T, MqttError>;
 
 //
 // Public wrapper interface, only necessary api
@@ -31,8 +35,8 @@ pub struct MqttClient {
 }
 
 impl MqttClient {
-    pub fn new(rd: &RoomData, host: String) -> Result<Self, MqttError> {
-        let cli = create_mqtt_client(&rd, host)?;
+    pub fn new(rd: &RoomData, host: &String) -> Result<Self> {
+        let cli = create_mqtt_client(rd, host)?;
         Ok(Self {
             cli,
             rd: rd.clone(),
@@ -53,26 +57,29 @@ impl MqttClient {
     }
 }
 
-impl message::Client for MqttClient {
+impl Client for MqttClient {
     type Iter = MqttRecvChannel;
     type ClientError = MqttError;
 
-    fn connect(&mut self) -> Result<Self::Iter, MqttError> {
-        let recv = connect_mqtt_client(&mut self.cli, &self.rd)?;
-        let iter = MqttRecvChannel(recv.into_iter());
-        Ok(iter)
+    fn connect(&mut self) -> Result<()> {
+        connect_mqtt_client(&mut self.cli, &self.rd)
     }
 
     fn is_connected(&self) -> bool {
         return self.cli.is_connected();
     }
 
-    fn disconnect(&mut self) -> Result<(), MqttError> {
+    fn disconnect(&mut self) -> Result<()> {
         self.cli.disconnect(None)?;
         Ok(())
     }
 
-    fn subscribe(&mut self, channels: Vec<String>) -> Result<(), MqttError> {
+    fn iter_msg(&mut self) -> Self::Iter {
+        let rx = self.cli.start_consuming();
+        MqttRecvChannel(rx.into_iter())
+    }
+
+    fn subscribe(&mut self, channels: Vec<String>) -> Result<()> {
         let qos: Vec<i32> = vec![2; channels.len()];
         match self.cli.subscribe_many(&channels, &qos) {
             Ok(qosv) => debug!("QoS granted: {:?}", qosv),
@@ -86,7 +93,7 @@ impl message::Client for MqttClient {
         Ok(())
     }
 
-    fn publish(&mut self, channel: String, msg: message::PubMsg) -> Result<(), MqttError> {
+    fn publish(&mut self, channel: String, msg: message::PubMsg) -> Result<()> {
         let msg = serde_json::to_string(&msg)?;
         let msg = mqtt::MessageBuilder::new()
             .topic(channel)
@@ -101,13 +108,12 @@ impl message::Client for MqttClient {
 pub struct MqttRecvChannel(PahuRecvIter);
 
 impl Iterator for MqttRecvChannel {
-    // todo: Change it to Result and handle cases aproprietly
-    type Item = Result<(String, message::SubMsg), MqttError>;
+    type Item = Result<(String, message::SubMsg)>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.0
             .next()
-            .map(|val| handle_msg(val).map_err(MqttError::from))
+            .map(|val| parse_msg(val).map_err(MqttError::from))
     }
 }
 
@@ -125,25 +131,22 @@ pub enum MqttError {
 // Helper functions on pahu_mqtt api
 //
 
-fn create_mqtt_client(rd: &RoomData, host: String) -> Result<mqtt::Client, MqttError> {
-    let create_opts = get_creation_mqtt_options(host, rd);
+fn create_mqtt_client(rd: &RoomData, host: impl Into<String>) -> Result<mqtt::Client> {
+    let create_opts = get_creation_mqtt_options(rd, host);
     let cli = mqtt::Client::new(create_opts)?;
     Ok(cli)
 }
 
-fn connect_mqtt_client(
-    cli: &mut mqtt::Client,
-    rd: &RoomData,
-) -> Result<PahuRecvChannel, MqttError> {
-    let rx = cli.start_consuming();
+fn connect_mqtt_client(cli: &mut mqtt::Client, rd: &RoomData) -> Result<()> {
     let lwt = get_lwt_mess(&rd);
     let conn_opts = get_connection_options(lwt);
-    Ok(cli.connect(conn_opts).map(move |_| rx)?)
+    cli.connect(conn_opts)?;
+    Ok(())
 }
 
-fn get_creation_mqtt_options(host: impl AsRef<str>, rd: &RoomData) -> mqtt::CreateOptions {
+fn get_creation_mqtt_options(rd: &RoomData, host: impl Into<String>) -> mqtt::CreateOptions {
     mqtt::CreateOptionsBuilder::new()
-        .server_uri(host.as_ref())
+        .server_uri(host)
         .client_id(format!("room-rt-{}-{}", rd.id, rd.pass))
         .mqtt_version(mqtt::MQTT_VERSION_5)
         .finalize()
@@ -165,7 +168,7 @@ fn get_connection_options(lwt: mqtt::Message) -> mqtt::ConnectOptions {
         .finalize()
 }
 
-fn handle_msg(msg: Option<mqtt::Message>) -> Result<(String, message::SubMsg), MqttError> {
+fn parse_msg(msg: Option<mqtt::Message>) -> Result<(String, message::SubMsg)> {
     match msg {
         Some(val) => Ok((
             val.topic().into(),

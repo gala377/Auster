@@ -1,17 +1,7 @@
-use serde::{Deserialize, Serialize};
+use crate::message::PubMsg;
 use std::error::Error;
 
-pub mod mqtt_adapter;
-
-#[derive(Debug, Serialize, Deserialize)]
-pub enum SubMsg {
-    Hello,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub enum PubMsg {
-    Hey,
-}
+pub mod mqtt;
 
 pub trait Client {
     /// Iterator type returned from the connect method.
@@ -21,10 +11,12 @@ pub trait Client {
 
     /// Returns blocking iterator over
     /// messages from the subscribed channels.
-    fn connect(&mut self) -> Result<Self::Iter, Self::ClientError>;
+    fn connect(&mut self) -> Result<(), Self::ClientError>;
 
     /// Resturs bool of the connection is still alive.
     fn is_connected(&self) -> bool;
+
+    fn iter_msg(&mut self) -> Self::Iter;
 
     /// Publish message in to the specified channel.
     fn publish(&mut self, channel: String, msg: PubMsg) -> Result<(), Self::ClientError>;
