@@ -1,31 +1,19 @@
-use rand;
-
-use serde::{Deserialize, Serialize};
-
 pub mod model;
 pub mod runtime;
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct RoomData {
-    pub id: usize,
-    pub pass: u64,
-}
+use crate::room::model::Room;
 
-impl RoomData {
-    pub fn new(id: usize) -> Self {
-        Self {
-            id,
-            pass: Self::gen_random_pass(),
-        }
-    }
+#[derive(Ord, PartialOrd, Eq, PartialEq)]
+pub struct RoomEntry(pub usize);
 
-    fn gen_random_pass() -> u64 {
-        rand::random()
+impl From<&Room> for RoomEntry {
+    fn from(room: &Room) -> Self {
+        Self(room.id)
     }
 }
 
 pub struct RoomsRepository {
-    rooms: Vec<Option<RoomData>>,
+    rooms: Vec<Option<RoomEntry>>,
 }
 
 impl RoomsRepository {
@@ -33,7 +21,7 @@ impl RoomsRepository {
         Self { rooms: Vec::new() }
     }
 
-    pub fn remove(&mut self, room: RoomData) {
+    pub fn remove(&mut self, room: RoomEntry) {
         let i = match self.find_room_index(room) {
             Some(i) => i,
             None => return,
@@ -41,22 +29,22 @@ impl RoomsRepository {
         self.rooms[i] = None;
     }
 
-    pub fn create_room(&mut self) -> RoomData {
-        match self.find_empy_space() {
+    pub fn create_room(&mut self, players_limit: usize, rounds: usize) -> Room {
+        match self.find_empty_space() {
             Some(i) => {
-                let rd = RoomData::new(i);
-                self.rooms[i] = Some(rd.clone());
+                let rd = Room::new(i, players_limit, rounds);
+                self.rooms[i] = Some(RoomEntry::from(&rd));
                 rd
             }
             None => {
-                let rd = RoomData::new(self.rooms.len());
-                self.rooms.push(Some(rd.clone()));
+                let rd = Room::new(self.rooms.len(), players_limit, rounds);
+                self.rooms.push(Some(RoomEntry::from(&rd)));
                 rd
             }
         }
     }
 
-    fn find_empy_space(&self) -> Option<usize> {
+    fn find_empty_space(&self) -> Option<usize> {
         for (i, v) in self.rooms.iter().enumerate() {
             if let None = v {
                 return Some(i);
@@ -65,7 +53,7 @@ impl RoomsRepository {
         None
     }
 
-    fn find_room_index(&self, rd: RoomData) -> Option<usize> {
+    fn find_room_index(&self, rd: RoomEntry) -> Option<usize> {
         for (i, el) in self.rooms.iter().enumerate() {
             if let Some(el) = el {
                 if *el == rd {

@@ -1,16 +1,21 @@
+use std::sync::Mutex;
 use std::{convert::Infallible, net::SocketAddr, path::Path, str::FromStr, sync::Arc};
+
+use futures::TryStreamExt;
 
 use fern::colors::{Color, ColoredLevelConfig};
 use hyper::{
     http::{response, StatusCode},
     service::{make_service_fn, service_fn},
-    Body, Request, Response, Server,
+    Body, Method, Request, Response, Server,
 };
 use log::{error, info};
-use serde_json as json;
-use tokio::sync::Mutex;
 
-use eurus::{config::Config, room::RoomsRepository, service::create_new_room};
+use eurus::{
+    config::Config,
+    room::RoomsRepository,
+    service::{create_new_room, dto},
+};
 
 #[tokio::main]
 async fn main() {
@@ -72,10 +77,10 @@ async fn run_server(config: &Config) -> anyhow::Result<()> {
         let rep = Arc::new(Mutex::new(RoomsRepository::new()));
         let conf = config.clone();
         async move {
-            Ok::<_, Infallible>(service_fn(move |req| {
+            Ok::<_, Infallible>(service_fn(move |req: Request<Body>| {
                 let rep = Arc::clone(&rep);
                 let conf = conf.clone();
-                async move { handle_req(req, rep, conf).await }
+                async move { Ok::<_, Infallible>(handle_req(req, rep, conf).await) }
             }))
         }
     });
@@ -85,30 +90,67 @@ async fn run_server(config: &Config) -> anyhow::Result<()> {
 }
 
 async fn handle_req(
-    _req: Request<Body>,
+    req: Request<Body>,
     rep: Arc<Mutex<RoomsRepository>>,
     config: Config,
-) -> Result<Response<Body>, Infallible> {
-    let body = {
-        // XXX: lock is here just because RoomRepository
-        // is a global in memory resource.
-        // If we could move to different service or
-        // a database for example a lock would be unnecessary.
-        let mut rep = rep.lock().await;
-        match create_new_room(&mut rep, config) {
-            Ok(rd) => rd,
-            Err(e) => {
-                error!("There was en error while creating a new room: {}", e);
-                let resp = response::Builder::new()
-                    .status(StatusCode::INTERNAL_SERVER_ERROR)
-                    .body(Body::from("{\"error\": \"Internal server error\"}"))
-                    .unwrap();
-                return Ok(resp);
-            }
-        }
+) -> Response<Body> {
+    match (req.method(), req.uri().path()) {
+        (&Method::POST, "/new_room") => new_room(req, rep, config).await,
+        _ => error_response("not found", StatusCode::NOT_FOUND),
+    }
+}
+
+async fn new_room(
+    req: Request<Body>,
+    rep: Arc<Mutex<RoomsRepository>>,
+    config: Config,
+) -> Response<Body> {
+    // todo: check if both are within limits
+    let (_, body) = req.into_parts();
+    let body = match body
+        .try_fold(Vec::new(), |mut acc, chunk| async move {
+            acc.extend_from_slice(&chunk);
+            Ok(acc)
+        })
+        .await
+    {
+        Ok(val) => val,
+        Err(_) => return error_response("could not assemble message", StatusCode::BAD_REQUEST),
     };
-    let resp = Response::new(Body::from(json::to_string(&body).unwrap()));
-    Ok(resp)
+    let body: dto::NewRoomReq = match serde_json::from_slice(&body) {
+        Ok(val) => val,
+        Err(_) => return error_response("could not decode message", StatusCode::BAD_REQUEST),
+    };
+    // XXX: lock is here just because RoomRepository
+    // is a global in memory resource.
+    // If we could move to different service or
+    // a database for example a lock would be unnecessary.
+    let mut rep = rep.lock().unwrap();
+    match create_new_room(&mut rep, config, body) {
+        Ok(rd) => {
+            let body = match serde_json::to_vec(&rd) {
+                Ok(val) => val,
+                Err(_) => {
+                    return error_response(
+                        "internal server error",
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                    )
+                }
+            };
+            Response::new(Body::from(body))
+        }
+        Err(e) => {
+            error!("There was en error while creating a new room: {}", e);
+            error_response("internal server error", StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+fn error_response(msg: impl AsRef<str>, status: StatusCode) -> Response<Body> {
+    response::Builder::new()
+        .status(status)
+        .body(Body::from(format!("{{\"error\": \"{}\"}}", msg.as_ref())))
+        .unwrap()
 }
 
 async fn shutdown_singal() {

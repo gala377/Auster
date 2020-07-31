@@ -1,5 +1,6 @@
 use log::info;
 
+use super::model::Room;
 use crate::{
     client::{
         self,
@@ -8,18 +9,17 @@ use crate::{
     },
     config::Config,
     message,
-    room::RoomData,
 };
 
 pub struct Runtime {
-    _rd: RoomData,
+    _rd: Room,
     _config: Config,
 }
 
 type RawMsg = Result<(String, message::Request), MqttError>;
 
 impl Runtime {
-    pub fn new(rd: RoomData, config: Config) -> Self {
+    pub fn new(rd: Room, config: Config) -> Self {
         Self {
             _rd: rd,
             _config: config,

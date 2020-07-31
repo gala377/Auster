@@ -10,7 +10,7 @@ use paho_mqtt as mqtt;
 use crate::{
     client::{Client, ErrorHandler, ErrorHandling},
     message,
-    room::RoomData,
+    room::model::Room,
 };
 
 //
@@ -26,6 +26,24 @@ type PahuRecvIter = mpsc::IntoIter<Option<mqtt::Message>>;
 
 type Result<T> = std::result::Result<T, MqttError>;
 
+// todo: RoomData is just a quick
+// and dirty fix.
+// MqttClient needs to be refactored later.
+#[derive(Clone)]
+struct RoomData {
+    id: usize,
+    pass: u64,
+}
+
+impl From<&Room> for RoomData {
+    fn from(room: &Room) -> Self {
+        Self {
+            id: room.id,
+            pass: room.pass,
+        }
+    }
+}
+
 //
 // Public wrapper interface, only necessary api
 //
@@ -35,12 +53,10 @@ pub struct MqttClient {
 }
 
 impl MqttClient {
-    pub fn new(rd: &RoomData, host: &String) -> Result<Self> {
-        let cli = create_mqtt_client(rd, host)?;
-        Ok(Self {
-            cli,
-            rd: rd.clone(),
-        })
+    pub fn new(rd: &Room, host: &String) -> Result<Self> {
+        let rd = RoomData::from(rd);
+        let cli = create_mqtt_client(&rd, host)?;
+        Ok(Self { cli, rd })
     }
 
     pub fn try_reconnect(&mut self) -> bool {

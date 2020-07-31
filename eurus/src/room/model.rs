@@ -7,14 +7,30 @@ pub type AnswerId = usize;
 
 pub struct Room {
     pub id: RoomId,           // on room creation
-    pub pass: u128,           // on room creation
+    pub pass: u64,            // on room creation
     pub players_limit: usize, // on room creation
     pub players: Vec<Player>,
-    pub rounds_limt: usize,
+    pub rounds_limit: usize,
     pub questions: Vec<Question>,
-    pub curr_cound: Round,
+    pub curr_cound: Option<Round>,
     pub past_rounds: Vec<Round>,
     pub state: RoomState,
+}
+
+impl Room {
+    pub fn new(id: RoomId, players_limit: usize, rounds_limit: usize) -> Self {
+        Self {
+            id,
+            players_limit,
+            rounds_limit,
+            pass: rand::random(),
+            players: Vec::new(),
+            questions: Vec::new(),
+            past_rounds: Vec::new(),
+            curr_cound: None,
+            state: RoomState::AcceptingPlayers,
+        }
+    }
 }
 
 pub enum RoomState {

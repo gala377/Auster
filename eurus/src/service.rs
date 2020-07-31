@@ -10,8 +10,11 @@ use crate::{
     },
     config::Config,
     message,
-    room::{self, RoomData, RoomsRepository},
+    room::{self, RoomsRepository},
 };
+use room::{model::Room, RoomEntry};
+
+pub mod dto;
 
 #[derive(Error, Debug)]
 pub enum RoomCreationError {
@@ -24,28 +27,32 @@ pub enum RoomCreationError {
 pub fn create_new_room(
     rep: &mut RoomsRepository,
     config: Config,
-) -> Result<RoomData, RoomCreationError> {
-    let rd = rep.create_room();
-    if let Err(err) = start_room_rt(rd.clone(), config) {
-        rep.remove(rd);
+    room_req: dto::NewRoomReq,
+) -> Result<dto::NewRoomResp, RoomCreationError> {
+    let rd = rep.create_room(room_req.players_limit, room_req.rounds_limit);
+    let re = RoomEntry::from(&rd);
+    let resp = dto::NewRoomResp::from(&rd);
+    if let Err(err) = start_room_rt(rd, config) {
+        rep.remove(re);
         return Err(err);
     }
-    Ok(rd)
+    Ok(resp)
 }
 
-fn start_room_rt(rd: RoomData, config: Config) -> Result<JoinHandle<()>, RoomCreationError> {
+fn start_room_rt(rd: Room, config: Config) -> Result<JoinHandle<()>, RoomCreationError> {
     let mut cli = get_mqtt_client(&rd, &config)?;
     let listener = cli.iter_msg();
     let handle = std::thread::spawn(move || {
-        info!("[rd-rt-{}] Created new room: {:?}", rd.id, rd);
+        info!("[rd-rt-{}] Created new room", rd.id);
         debug!("[rd-rt-{}] Waiting for messages", rd.id);
-        let runtime = room::runtime::Runtime::new(rd.clone(), config);
+        let rd_id = rd.id;
+        let runtime = room::runtime::Runtime::new(rd, config);
         for msg in listener {
-            info!("[rd-rt-{}] Got msg", rd.id);
+            info!("[rd-rt-{}] Got msg", rd_id);
             match runtime.process_msg(&mut cli, msg) {
                 ErrorHandling::Abort => {
                     if cli.is_connected() {
-                        info!("[rd-rt-{}] Disconnecting", rd.id);
+                        info!("[rd-rt-{}] Disconnecting", rd_id);
                         // todo: unsubscribe from topics here
                         cli.disconnect().unwrap();
                     }
@@ -58,7 +65,7 @@ fn start_room_rt(rd: RoomData, config: Config) -> Result<JoinHandle<()>, RoomCre
     Ok(handle)
 }
 
-fn get_mqtt_client(rd: &RoomData, config: &Config) -> Result<MqttClient, RoomCreationError> {
+fn get_mqtt_client(rd: &Room, config: &Config) -> Result<MqttClient, RoomCreationError> {
     let channel_prefix = &config.runtime.room_channel_prefix;
     let mut cli = MqttClient::new(rd, &config.mqtt.host)?;
     cli.connect()?;
