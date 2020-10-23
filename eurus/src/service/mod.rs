@@ -1,17 +1,17 @@
-use std::{time::Duration, pin::Pin};
+use std::{pin::Pin, time::Duration};
 
-use log::{debug, error, info, warn};
-use thiserror::Error;
-use futures::StreamExt;
-use paho_mqtt as mqtt;
-use paho_mqtt::Error as MqttError;
-use futures::Stream;
 use crate::{
     config::Config,
     message,
     room::{self, RoomsRepository},
     room::{model::Room, RoomEntry},
 };
+use futures::Stream;
+use futures::StreamExt;
+use log::{debug, error, info, warn};
+use paho_mqtt as mqtt;
+use paho_mqtt::Error as MqttError;
+use thiserror::Error;
 
 pub mod dto;
 
@@ -120,7 +120,9 @@ async fn send_rt_start_msg(cli: &mut mqtt::AsyncClient, rd: &Room, config: &Conf
 
 type Topic = String;
 
-fn parse_msg(msg: Option<mqtt::Message>) -> std::result::Result<(Topic, message::Request), RuntimeError> {
+fn parse_msg(
+    msg: Option<mqtt::Message>,
+) -> std::result::Result<(Topic, message::Request), RuntimeError> {
     match msg {
         Some(val) => Ok((
             val.topic().into(),
@@ -128,12 +130,16 @@ fn parse_msg(msg: Option<mqtt::Message>) -> std::result::Result<(Topic, message:
         )),
         None => Err(RuntimeError::ConnectionReset),
     }
-
 }
 
-async fn create_room_rt_task<S>(mut cli: mqtt::AsyncClient, mut msg_stream: Pin<Box<S>>, rd: Room, config: Config) -> impl std::future::Future<Output=()>
+async fn create_room_rt_task<S>(
+    mut cli: mqtt::AsyncClient,
+    mut msg_stream: Pin<Box<S>>,
+    rd: Room,
+    config: Config,
+) -> impl std::future::Future<Output = ()>
 where
-    S: Stream<Item=Option<mqtt::Message>>,
+    S: Stream<Item = Option<mqtt::Message>>,
 {
     async move {
         let rd_id = rd.id;
@@ -145,7 +151,7 @@ where
             let msg = parse_msg(msg);
             match msg {
                 Ok((topic, msg)) => {
-                    let resp = runtime.process_msg(msg).await;
+                    let resp = runtime.process_msg(player_from_topic(&topic), msg).await;
                     if handle_resp(&mut cli, rd_id, topic, &config, resp).await {
                         break;
                     }
@@ -167,7 +173,13 @@ where
     }
 }
 
-async fn handle_resp(cli: &mut mqtt::AsyncClient, rd_id: usize, src_topic: Topic, config: &Config, cmd: Command) -> bool {
+async fn handle_resp(
+    cli: &mut mqtt::AsyncClient,
+    rd_id: usize,
+    src_topic: Topic,
+    config: &Config,
+    cmd: Command,
+) -> bool {
     match cmd {
         Command::Abort(msg) => {
             if let Some(msg) = msg {
@@ -210,7 +222,13 @@ async fn try_reconnect(cli: &mut mqtt::AsyncClient) -> bool {
     false
 }
 
-async fn send_resp(to: &str, resp: &message::Response, cli: &mut mqtt::AsyncClient, config: &Config, rd_id: usize) {
+async fn send_resp(
+    to: &str,
+    resp: &message::Response,
+    cli: &mut mqtt::AsyncClient,
+    config: &Config,
+    rd_id: usize,
+) {
     let channel_prefix = &config.runtime.room_channel_prefix;
     let msg = mqtt::MessageBuilder::new()
         .topic(format!("{}/{}/rt/read", channel_prefix, rd_id))
@@ -218,4 +236,13 @@ async fn send_resp(to: &str, resp: &message::Response, cli: &mut mqtt::AsyncClie
         .qos(2)
         .finalize();
     cli.publish(msg).await.unwrap();
+}
+
+fn player_from_topic(topic: &Topic) -> Option<usize> {
+    let user = topic.split('/').nth(2).unwrap();
+    if user == "rt" {
+        None
+    } else {
+        Some(user.parse().unwrap())
+    }
 }

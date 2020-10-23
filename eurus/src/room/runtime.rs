@@ -12,7 +12,6 @@ pub struct Runtime {
     _config: Config,
 }
 
-
 impl Runtime {
     pub fn new(rd: Room, config: Config) -> Self {
         Self {
@@ -21,8 +20,15 @@ impl Runtime {
         }
     }
 
-    pub(crate) async fn process_msg(&self, msg: message::Request) -> service::Command {
+    pub(crate) async fn process_msg(
+        &self,
+        player: Option<super::model::PlayerId>,
+        msg: message::Request,
+    ) -> service::Command {
+        match player {
+            Some(player) => info!("msg from player {}: {:?}", player, msg),
+            None => info!("global msg {:?}", msg),
+        }
         service::Command::Skip
     }
 }
-

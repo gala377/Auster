@@ -25,7 +25,7 @@ pub enum Response {
     GameScore,
     RoomState,
     Err(ErrResponse),
-    Priv(PlayerId, Box<Response>)
+    Priv(PlayerId, Box<Response>),
 }
 
 #[derive(Debug, Serialize, Deserialize)]

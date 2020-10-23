@@ -32,4 +32,3 @@ pub struct NewPlayerReq {
     password: u64,
     name: String,
 }
-

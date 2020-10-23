@@ -1,5 +1,5 @@
-use tokio::sync::Mutex;
 use std::{convert::Infallible, net::SocketAddr, path::Path, str::FromStr, sync::Arc};
+use tokio::sync::Mutex;
 
 use futures::TryStreamExt;
 
