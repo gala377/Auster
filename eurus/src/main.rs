@@ -74,6 +74,8 @@ fn read_config<P: AsRef<Path>>(path: P) -> anyhow::Result<Config> {
 async fn run_server(config: &Config) -> anyhow::Result<()> {
     let addr = SocketAddr::from_str(&config.runtime.server_address)?;
     let make_svc = make_service_fn(move |_| {
+        // todo: Does this work? Doesn't this create new repository each time
+        // we get a new request?
         let rep = Arc::new(Mutex::new(RoomsRepository::new()));
         let conf = config.clone();
         async move {
