@@ -3,6 +3,7 @@ use std::collections::HashMap;
 pub type QuestionId = usize;
 pub type RoomId = usize;
 pub type PlayerId = usize;
+pub type PlayerToken = usize;
 pub type AnswerId = usize;
 
 pub struct Room {
@@ -42,6 +43,7 @@ pub enum RoomState {
 
 pub struct Player {
     pub id: PlayerId,
+    pub token: PlayerToken,
     pub name: String,
     pub points: usize,
 }

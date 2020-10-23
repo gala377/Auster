@@ -4,6 +4,7 @@ use super::model::Room;
 use crate::{
     config::Config,
     message,
+    service::{self, dto},
 };
 
 pub struct Runtime {
@@ -11,7 +12,6 @@ pub struct Runtime {
     _config: Config,
 }
 
-type RawMsg = i32;
 
 impl Runtime {
     pub fn new(rd: Room, config: Config) -> Self {
@@ -21,11 +21,8 @@ impl Runtime {
         }
     }
 
-    pub fn process_msg(&self, msg: RawMsg) -> () {
-        // match msg {
-        //     Err(err) => MqttErrorHandler::handle_err(cli, err),
-        //     Ok((channel, msg)) => handle_mess(cli, msg, channel),
-        // }
+    pub(crate) async fn process_msg(&self, msg: message::Request) -> service::Command {
+        service::Command::Skip
     }
 }
 

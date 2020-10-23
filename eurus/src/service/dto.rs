@@ -27,8 +27,9 @@ impl From<&Room> for NewRoomResp {
 }
 
 #[derive(Debug, Serialize)]
-pub struct NewPlayer {
+pub struct NewPlayerReq {
     id: usize,
     password: u64,
     name: String,
 }
+

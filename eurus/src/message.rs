@@ -10,8 +10,10 @@ pub enum Request {
     AddQuestion,
     AddAnswer,
     SelectAnswer,
-    Disconneting,
+    Disconnecting,
 }
+
+type PlayerId = usize;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Response {
@@ -21,12 +23,9 @@ pub enum Response {
     QuestionAdded,
     NewRound,
     GameScore,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub enum PrivResponse {
-    Err(ErrResponse),
     RoomState,
+    Err(ErrResponse),
+    Priv(PlayerId, Box<Response>)
 }
 
 #[derive(Debug, Serialize, Deserialize)]
