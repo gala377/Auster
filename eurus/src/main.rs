@@ -1,4 +1,4 @@
-use std::sync::Mutex;
+use tokio::sync::Mutex;
 use std::{convert::Infallible, net::SocketAddr, path::Path, str::FromStr, sync::Arc};
 
 use futures::TryStreamExt;
@@ -125,8 +125,14 @@ async fn new_room(
     // is a global in memory resource.
     // If we could move to different service or
     // a database for example a lock would be unnecessary.
-    let mut rep = rep.lock().unwrap();
-    match create_new_room(&mut rep, config, body) {
+    // We could spawn a task to manage database writes
+    // with message passing. That is what tokio docs want you to do
+    // or create a struct holding a synchronous mutex and performing
+    // only synchronous operations on it so that lock is not held
+    // across multiple await points.
+    // lock for the whole room creation process is really excessive.
+    let mut rep = rep.lock().await;
+    match create_new_room(&mut *rep, config, body).await {
         Ok(rd) => {
             let body = match serde_json::to_vec(&rd) {
                 Ok(val) => val,

@@ -2,11 +2,6 @@ use log::info;
 
 use super::model::Room;
 use crate::{
-    client::{
-        self,
-        mqtt::{MqttClient, MqttError, MqttErrorHandler},
-        ErrorHandler, ErrorHandling,
-    },
     config::Config,
     message,
 };
@@ -16,7 +11,7 @@ pub struct Runtime {
     _config: Config,
 }
 
-type RawMsg = Result<(String, message::Request), MqttError>;
+type RawMsg = i32;
 
 impl Runtime {
     pub fn new(rd: Room, config: Config) -> Self {
@@ -26,19 +21,11 @@ impl Runtime {
         }
     }
 
-    pub fn process_msg(&self, cli: &mut MqttClient, msg: RawMsg) -> ErrorHandling {
-        match msg {
-            Err(err) => MqttErrorHandler::handle_err(cli, err),
-            Ok((channel, msg)) => handle_mess(cli, msg, channel),
-        }
+    pub fn process_msg(&self, msg: RawMsg) -> () {
+        // match msg {
+        //     Err(err) => MqttErrorHandler::handle_err(cli, err),
+        //     Ok((channel, msg)) => handle_mess(cli, msg, channel),
+        // }
     }
 }
 
-fn handle_mess(
-    _cli: &mut impl client::Client,
-    msg: message::Request,
-    channel: String,
-) -> ErrorHandling {
-    info!("Got msg: {:?} from channel {}", msg, channel);
-    ErrorHandling::Skip
-}
