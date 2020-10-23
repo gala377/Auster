@@ -123,6 +123,7 @@ async fn new_room(
         Ok(val) => val,
         Err(_) => return error_response("could not decode message", StatusCode::BAD_REQUEST),
     };
+    // todo: Change this.
     // XXX: lock is here just because RoomRepository
     // is a global in memory resource.
     // If we could move to different service or
