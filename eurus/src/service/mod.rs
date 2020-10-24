@@ -8,7 +8,8 @@ use crate::{
 };
 use futures::Stream;
 use futures::StreamExt;
-use log::{debug, error, info, warn};
+use tracing::{debug, error, info, warn};
+use tracing::Instrument;
 use paho_mqtt as mqtt;
 use paho_mqtt::Error as MqttError;
 use thiserror::Error;
@@ -41,6 +42,7 @@ pub(crate) enum Command {
     Response(message::Response),
 }
 
+#[tracing::instrument(skip(rep))]
 pub async fn create_new_room(
     rep: &mut RoomsRepository,
     config: Config,
@@ -56,16 +58,20 @@ pub async fn create_new_room(
     Ok(resp)
 }
 
+#[tracing::instrument(skip(rd))]
 async fn start_room_rt(rd: Room, config: Config) -> Result<()> {
     let mut cli = get_mqtt_client(&rd, &config).await?;
     let msg_stream = cli.get_stream(25); // arbitrarily chosen
     connect_to_mqtt(&mut cli, &rd, &config).await?;
     subscribe_default(&mut cli, &rd, &config).await?;
     send_rt_start_msg(&mut cli, &rd, &config).await?;
-    tokio::spawn(create_room_rt_task(cli, Box::pin(msg_stream), rd, config));
+    info!("Spawning room rt");
+    tokio::spawn(create_room_rt_task(cli, Box::pin(msg_stream), rd, config).await);
+    info!("Spawned");
     Ok(())
 }
 
+#[tracing::instrument(skip(rd))]
 async fn get_mqtt_client(rd: &Room, config: &Config) -> Result<mqtt::AsyncClient> {
     let create_opts = mqtt::CreateOptionsBuilder::new()
         .server_uri(&config.mqtt.host)
@@ -76,6 +82,7 @@ async fn get_mqtt_client(rd: &Room, config: &Config) -> Result<mqtt::AsyncClient
     Ok(cli)
 }
 
+#[tracing::instrument(skip(cli, rd))]
 async fn connect_to_mqtt(cli: &mut mqtt::AsyncClient, rd: &Room, config: &Config) -> Result<()> {
     let lwt = mqtt::MessageBuilder::new()
         .topic(format!("test/room/{}", rd.id))
@@ -91,6 +98,7 @@ async fn connect_to_mqtt(cli: &mut mqtt::AsyncClient, rd: &Room, config: &Config
     Ok(())
 }
 
+#[tracing::instrument(skip(rd, cli))]
 async fn subscribe_default(cli: &mut mqtt::AsyncClient, rd: &Room, config: &Config) -> Result<()> {
     let channel_prefix = &config.runtime.room_channel_prefix;
     let channels = vec![format!("{}/{}/rt/write", channel_prefix, rd.id)];
@@ -107,6 +115,7 @@ async fn subscribe_default(cli: &mut mqtt::AsyncClient, rd: &Room, config: &Conf
     Ok(())
 }
 
+#[tracing::instrument(skip(rd, cli))]
 async fn send_rt_start_msg(cli: &mut mqtt::AsyncClient, rd: &Room, config: &Config) -> Result<()> {
     let channel_prefix = &config.runtime.room_channel_prefix;
     let msg = mqtt::MessageBuilder::new()
@@ -120,6 +129,7 @@ async fn send_rt_start_msg(cli: &mut mqtt::AsyncClient, rd: &Room, config: &Conf
 
 type Topic = String;
 
+#[tracing::instrument(skip(msg))]
 fn parse_msg(
     msg: Option<mqtt::Message>,
 ) -> std::result::Result<(Topic, message::Request), RuntimeError> {
@@ -132,6 +142,7 @@ fn parse_msg(
     }
 }
 
+#[tracing::instrument(skip(cli, msg_stream, rd))]
 async fn create_room_rt_task<S>(
     mut cli: mqtt::AsyncClient,
     mut msg_stream: Pin<Box<S>>,
@@ -141,11 +152,14 @@ async fn create_room_rt_task<S>(
 where
     S: Stream<Item = Option<mqtt::Message>>,
 {
+    info!("Iside a room creation task");
+    let span = tracing::debug_span!("room message handling", room_id = rd.id);
     async move {
         let rd_id = rd.id;
         info!("[rd-rt-{}] Created new room", rd_id);
         debug!("[rd-rt-{}] Waiting for messages", rd_id);
         let runtime = room::runtime::Runtime::new(rd, config.clone());
+        info!("Runtime created");
         while let Some(msg) = msg_stream.next().await {
             info!("[rd-rt-{}] Got msg", &rd_id);
             let msg = parse_msg(msg);
@@ -170,9 +184,10 @@ where
                 }
             }
         }
-    }
+    }.instrument(span)
 }
 
+#[tracing::instrument(skip(cli, cmd))]
 async fn handle_resp(
     cli: &mut mqtt::AsyncClient,
     rd_id: usize,
@@ -209,6 +224,7 @@ async fn handle_resp(
 const CONN_RETRIES: u32 = 12;
 const RETRY_WAIT_MS: u64 = 5000;
 
+#[tracing::instrument(skip(cli))]
 async fn try_reconnect(cli: &mut mqtt::AsyncClient) -> bool {
     warn!("Connection lost trying to reconnect");
     for _ in 0..CONN_RETRIES {
@@ -222,6 +238,7 @@ async fn try_reconnect(cli: &mut mqtt::AsyncClient) -> bool {
     false
 }
 
+#[tracing::instrument(skip(cli))]
 async fn send_resp(
     to: &str,
     resp: &message::Response,

@@ -1,15 +1,15 @@
 use std::{convert::Infallible, net::SocketAddr, path::Path, str::FromStr, sync::Arc};
 use tokio::sync::Mutex;
+use tracing::Instrument;
 
 use futures::TryStreamExt;
 
-use fern::colors::{Color, ColoredLevelConfig};
 use hyper::{
     http::{response, StatusCode},
     service::{make_service_fn, service_fn},
     Body, Method, Request, Response, Server,
 };
-use log::{error, info};
+use tracing::{error, info};
 
 use eurus::{
     config::Config,
@@ -36,32 +36,47 @@ async fn main() {
         eprintln!("logger couldn't be setup {}", e);
         return;
     }
-    if let Err(e) = run_server(&config).await {
+    let rep = Arc::new(Mutex::new(RoomsRepository::new()));
+    if let Err(e) = run_server(&config, rep).await {
         error!("server error: {}", e);
     }
 }
 
-fn setup_logger(_config: &Config) -> Result<(), fern::InitError> {
-    let colors = ColoredLevelConfig::new()
-        .warn(Color::Yellow)
-        .error(Color::Red)
-        .info(Color::Green);
-    fern::Dispatch::new()
-        .format(move |out, message, record| {
-            out.finish(format_args!(
-                "{}{}[{}][{}] {}\x1B[0m",
-                format_args!("\x1B[{}m", colors.get_color(&record.level()).to_fg_str()),
-                chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
-                record.target(),
-                record.level(),
-                message
-            ))
-        })
-        .level(log::LevelFilter::Debug)
-        .level_for("hyber", log::LevelFilter::Warn)
-        .level_for("paho_mqtt", log::LevelFilter::Warn)
-        .chain(std::io::stdout())
-        .apply()?;
+// fn setup_logger(_config: &Config) -> Result<(), fern::InitError> {
+//     let colors = ColoredLevelConfig::new()
+//         .warn(Color::Yellow)
+//         .error(Color::Red)
+//         .info(Color::Green);
+//     fern::Dispatch::new()
+//         .format(move |out, message, record| {
+//             out.finish(format_args!(
+//                 "{}{}[{}][{}] {}\x1B[0m",
+//                 format_args!("\x1B[{}m", colors.get_color(&record.level()).to_fg_str()),
+//                 chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
+//                 record.target(),
+//                 record.level(),
+//                 message
+//             ))
+//         })
+//         .level(log::LevelFilter::Debug)
+//         .level_for("hyber", log::LevelFilter::Warn)
+//         .level_for("paho_mqtt", log::LevelFilter::Warn)
+//         .chain(std::io::stdout())
+//         .apply()?;
+//     Ok(())
+// }
+
+fn setup_logger(_config: &Config) -> anyhow::Result<()> {
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .with_timer(tracing_subscriber::fmt::time())
+        .with_target(true)
+        .with_level(true)
+        .with_thread_ids(true)
+        .with_thread_names(true)
+        .compact()
+        .try_init()
+        .unwrap(); // todo: yeah, not the best solution, for now it's ok
     Ok(())
 }
 
@@ -71,26 +86,28 @@ fn read_config<P: AsRef<Path>>(path: P) -> anyhow::Result<Config> {
     Ok(toml::from_str(contents)?)
 }
 
-async fn run_server(config: &Config) -> anyhow::Result<()> {
+#[tracing::instrument(skip(rep))]
+async fn run_server(config: &Config, rep: Arc<Mutex<RoomsRepository>>) -> anyhow::Result<()> {
     let addr = SocketAddr::from_str(&config.runtime.server_address)?;
     let make_svc = make_service_fn(move |_| {
-        // todo: Does this work? Doesn't this create new repository each time
-        // we get a new request?
-        let rep = Arc::new(Mutex::new(RoomsRepository::new()));
         let conf = config.clone();
+        let span = tracing::debug_span!("service creation");
+        let rep_clone = Arc::clone(&rep);
         async move {
             Ok::<_, Infallible>(service_fn(move |req: Request<Body>| {
-                let rep = Arc::clone(&rep);
+                let span = tracing::debug_span!("request span");
                 let conf = conf.clone();
-                async move { Ok::<_, Infallible>(handle_req(req, rep, conf).await) }
+                let rep = Arc::clone(&rep_clone);
+                async move { Ok::<_, Infallible>(handle_req(req, rep, conf).await) }.instrument(span)
             }))
-        }
+        }.instrument(span)
     });
     let server = Server::bind(&addr).serve(make_svc);
     let server = server.with_graceful_shutdown(shutdown_singal());
     Ok(server.await?)
 }
 
+#[tracing::instrument(skip(rep))]
 async fn handle_req(
     req: Request<Body>,
     rep: Arc<Mutex<RoomsRepository>>,
@@ -102,6 +119,7 @@ async fn handle_req(
     }
 }
 
+#[tracing::instrument(skip(rep))]
 async fn new_room(
     req: Request<Body>,
     rep: Arc<Mutex<RoomsRepository>>,
@@ -155,6 +173,7 @@ async fn new_room(
     }
 }
 
+#[tracing::instrument(skip(msg))]
 fn error_response(msg: impl AsRef<str>, status: StatusCode) -> Response<Body> {
     response::Builder::new()
         .status(status)
@@ -162,6 +181,7 @@ fn error_response(msg: impl AsRef<str>, status: StatusCode) -> Response<Body> {
         .unwrap()
 }
 
+#[tracing::instrument]
 async fn shutdown_singal() {
     tokio::signal::ctrl_c()
         .await
