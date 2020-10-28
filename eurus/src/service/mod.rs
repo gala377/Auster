@@ -38,6 +38,7 @@ pub enum RuntimeError {
     MsgDecodingError(#[from] serde_json::Error),
 }
 
+#[allow(dead_code)]
 pub(crate) enum Command {
     Skip,
     Abort(Option<String>),

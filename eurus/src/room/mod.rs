@@ -1,6 +1,6 @@
 use futures::Future;
-use tracing::warn;
 use tokio::sync::mpsc;
+use tracing::warn;
 pub mod model;
 pub mod runtime;
 
@@ -24,6 +24,7 @@ pub enum RepReq {
 pub enum RepResp {
     RoomCreated(Room),
     RoomRemoved,
+    ClosingRepository,
 }
 
 pub struct RoomsRepository {
@@ -59,13 +60,24 @@ impl RoomsRepository {
                             rounds,
                         } => {
                             let rd = room_rep.create_room(players_limit, rounds);
-                            responder.send(RepResp::RoomCreated(rd)).await;
+                            // let us just ignore an error here
+                            let _ = responder.send(RepResp::RoomCreated(rd)).await;
                         }
                         RepReq::RemoveRoom { room } => {
                             room_rep.remove(room);
-                            responder.send(RepResp::RoomRemoved).await;
+                            // let us just ignore an error here
+                            let _ = responder.send(RepResp::RoomRemoved).await;
                         }
-                        RepReq::Close => break,
+                        RepReq::Close => {
+                            // in case someone would like to wait on response channel
+                            // instead of a running task.
+                            // Note that it does some cleanup after sending the message and whats
+                            // more it even yields here so repositories task should still
+                            // be awaited instead of using a channel.
+                            rx.close();
+                            let _ = responder.send(RepResp::ClosingRepository).await;
+                            // We do not break from while as we still want to drain messages
+                        }
                     }
                 }
             },

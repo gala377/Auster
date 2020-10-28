@@ -1,11 +1,7 @@
 use tracing::info;
 
 use super::model::Room;
-use crate::{
-    config::Config,
-    message,
-    service::{self, dto},
-};
+use crate::{config::Config, message, service};
 
 pub struct Runtime {
     _rd: Room,

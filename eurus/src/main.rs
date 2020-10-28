@@ -1,5 +1,4 @@
-use std::{convert::Infallible, net::SocketAddr, path::Path, str::FromStr, sync::Arc};
-use tokio::sync::Mutex;
+use std::{convert::Infallible, net::SocketAddr, path::Path, str::FromStr};
 use tracing::Instrument;
 
 use futures::TryStreamExt;
@@ -13,7 +12,7 @@ use tracing::{error, info};
 
 use eurus::{
     config::Config,
-    room::{RoomsRepository, RepReq, RepReqChannel},
+    room::{RepReq, RepReqChannel, RoomsRepository},
     service::{create_new_room, dto},
 };
 
@@ -92,11 +91,7 @@ async fn run_server(config: &Config, rep: RepReqChannel) -> anyhow::Result<()> {
 }
 
 #[tracing::instrument(skip(rep))]
-async fn handle_req(
-    req: Request<Body>,
-    rep: RepReqChannel,
-    config: Config,
-) -> Response<Body> {
+async fn handle_req(req: Request<Body>, rep: RepReqChannel, config: Config) -> Response<Body> {
     match (req.method(), req.uri().path()) {
         (&Method::POST, "/new_room") => new_room(req, rep, config).await,
         _ => error_response("not found", StatusCode::NOT_FOUND),
@@ -104,11 +99,7 @@ async fn handle_req(
 }
 
 #[tracing::instrument(skip(rep))]
-async fn new_room(
-    req: Request<Body>,
-    rep: RepReqChannel,
-    config: Config,
-) -> Response<Body> {
+async fn new_room(req: Request<Body>, rep: RepReqChannel, config: Config) -> Response<Body> {
     // todo: check if both are within limits
     let (_, body) = req.into_parts();
     let body = match body
