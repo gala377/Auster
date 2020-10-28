@@ -1,4 +1,5 @@
 use futures::Future;
+use tracing::warn;
 use tokio::sync::mpsc;
 pub mod model;
 pub mod runtime;
@@ -15,8 +16,8 @@ impl From<&Room> for RoomEntry {
 }
 
 pub enum RepReq {
-    CreateRoom{players_limit: usize, rounds: usize},
-    RemoveRoom{room: RoomEntry},
+    CreateRoom { players_limit: usize, rounds: usize },
+    RemoveRoom { room: RoomEntry },
     Close,
 }
 
@@ -37,30 +38,39 @@ impl RoomsRepository {
     }
 
     pub async fn send_req(tx: &mut RepReqChannel, req: RepReq) -> Option<RepResp> {
-        let (resp_tx, mut resp_rx) = mpsc::channel(0);
-        tx.send((req, resp_tx)).await;
+        let (resp_tx, mut resp_rx) = mpsc::channel(1);
+        if let Err(err) = tx.send((req, resp_tx)).await {
+            warn!("could not send a command to room repository {}", err);
+            return None;
+        }
         resp_rx.recv().await
     }
 
-    pub fn new_task() -> (impl Future<Output=()>, RepReqChannel) {
+    pub fn new_task() -> (impl Future<Output = ()>, RepReqChannel) {
         type ChanData = (RepReq, mpsc::Sender<RepResp>);
         let (tx, mut rx): (mpsc::Sender<ChanData>, mpsc::Receiver<ChanData>) = mpsc::channel(256);
         let mut room_rep = Self::new();
-        (async move {
-            while let Some((req, mut responder)) = rx.recv().await {
-                match req {
-                    RepReq::CreateRoom{players_limit, rounds} => {
-                        let rd = room_rep.create_room(players_limit, rounds);
-                        responder.send(RepResp::RoomCreated(rd)).await;
+        (
+            async move {
+                while let Some((req, mut responder)) = rx.recv().await {
+                    match req {
+                        RepReq::CreateRoom {
+                            players_limit,
+                            rounds,
+                        } => {
+                            let rd = room_rep.create_room(players_limit, rounds);
+                            responder.send(RepResp::RoomCreated(rd)).await;
+                        }
+                        RepReq::RemoveRoom { room } => {
+                            room_rep.remove(room);
+                            responder.send(RepResp::RoomRemoved).await;
+                        }
+                        RepReq::Close => break,
                     }
-                    RepReq::RemoveRoom{room} => {
-                        room_rep.remove(room);
-                        responder.send(RepResp::RoomRemoved).await;
-                    }
-                    RepReq::Close => break,
                 }
-            }
-        }, tx)
+            },
+            tx,
+        )
     }
 
     pub fn remove(&mut self, room: RoomEntry) {

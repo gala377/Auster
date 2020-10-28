@@ -3,16 +3,16 @@ use std::{pin::Pin, time::Duration};
 use crate::{
     config::Config,
     message,
-    room::{self, RoomsRepository},
+    room::{self, RepReq, RepReqChannel, RepResp, RoomsRepository},
     room::{model::Room, RoomEntry},
 };
 use futures::Stream;
 use futures::StreamExt;
-use tracing::{debug, error, info, warn};
-use tracing::Instrument;
 use paho_mqtt as mqtt;
 use paho_mqtt::Error as MqttError;
 use thiserror::Error;
+use tracing::Instrument;
+use tracing::{debug, error, info, warn};
 
 pub mod dto;
 
@@ -20,6 +20,8 @@ type Result<T> = std::result::Result<T, RoomCreationError>;
 
 #[derive(Error, Debug)]
 pub enum RoomCreationError {
+    #[error("error: {0}")]
+    UnknownError(String),
     #[error("{0}")]
     MqttConnectionError(#[from] MqttError),
     #[error("could not encode the message {0}")]
@@ -44,15 +46,30 @@ pub(crate) enum Command {
 
 #[tracing::instrument(skip(rep))]
 pub async fn create_new_room(
-    rep: &mut RoomsRepository,
+    mut rep: RepReqChannel,
     config: Config,
     room_req: dto::NewRoomReq,
 ) -> Result<dto::NewRoomResp> {
-    let rd = rep.create_room(room_req.players_limit, room_req.rounds_limit);
+    let rd = RoomsRepository::send_req(
+        &mut rep,
+        RepReq::CreateRoom {
+            players_limit: room_req.players_limit,
+            rounds: room_req.rounds_limit,
+        },
+    )
+    .await;
+    let rd = match rd {
+        Some(RepResp::RoomCreated(val)) => val,
+        _ => {
+            return Err(RoomCreationError::UnknownError(
+                "couldn't complete creation request in room repository".to_owned(),
+            ))
+        }
+    };
     let re = RoomEntry::from(&rd);
     let resp = dto::NewRoomResp::from(&rd);
     if let Err(err) = start_room_rt(rd, config).await {
-        rep.remove(re);
+        RoomsRepository::send_req(&mut rep, RepReq::RemoveRoom { room: re }).await;
         return Err(err);
     }
     Ok(resp)
@@ -65,9 +82,9 @@ async fn start_room_rt(rd: Room, config: Config) -> Result<()> {
     connect_to_mqtt(&mut cli, &rd, &config).await?;
     subscribe_default(&mut cli, &rd, &config).await?;
     send_rt_start_msg(&mut cli, &rd, &config).await?;
-    info!("Spawning room rt");
+    info!("spawning room rt");
     tokio::spawn(create_room_rt_task(cli, Box::pin(msg_stream), rd, config).await);
-    info!("Spawned");
+    info!("spawned");
     Ok(())
 }
 
@@ -184,7 +201,8 @@ where
                 }
             }
         }
-    }.instrument(span)
+    }
+    .instrument(span)
 }
 
 #[tracing::instrument(skip(cli, cmd))]

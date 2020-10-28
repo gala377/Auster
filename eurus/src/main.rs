@@ -13,7 +13,7 @@ use tracing::{error, info};
 
 use eurus::{
     config::Config,
-    room::RoomsRepository,
+    room::{RoomsRepository, RepReq, RepReqChannel},
     service::{create_new_room, dto},
 };
 
@@ -36,35 +36,16 @@ async fn main() {
         eprintln!("logger couldn't be setup {}", e);
         return;
     }
-    let rep = Arc::new(Mutex::new(RoomsRepository::new()));
-    if let Err(e) = run_server(&config, rep).await {
-        error!("server error: {}", e);
+    let (task, mut room_rep_chan) = RoomsRepository::new_task();
+    let room_rep_task = tokio::spawn(task);
+    if let Err(e) = run_server(&config, room_rep_chan.clone()).await {
+        eprintln!("server error: {}", e);
+    }
+    RoomsRepository::send_req(&mut room_rep_chan, RepReq::Close).await;
+    if let Err(err) = room_rep_task.await {
+        eprintln!("couldn't join on the repository task: {}", err);
     }
 }
-
-// fn setup_logger(_config: &Config) -> Result<(), fern::InitError> {
-//     let colors = ColoredLevelConfig::new()
-//         .warn(Color::Yellow)
-//         .error(Color::Red)
-//         .info(Color::Green);
-//     fern::Dispatch::new()
-//         .format(move |out, message, record| {
-//             out.finish(format_args!(
-//                 "{}{}[{}][{}] {}\x1B[0m",
-//                 format_args!("\x1B[{}m", colors.get_color(&record.level()).to_fg_str()),
-//                 chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
-//                 record.target(),
-//                 record.level(),
-//                 message
-//             ))
-//         })
-//         .level(log::LevelFilter::Debug)
-//         .level_for("hyber", log::LevelFilter::Warn)
-//         .level_for("paho_mqtt", log::LevelFilter::Warn)
-//         .chain(std::io::stdout())
-//         .apply()?;
-//     Ok(())
-// }
 
 fn setup_logger(_config: &Config) -> anyhow::Result<()> {
     tracing_subscriber::fmt()
@@ -87,20 +68,23 @@ fn read_config<P: AsRef<Path>>(path: P) -> anyhow::Result<Config> {
 }
 
 #[tracing::instrument(skip(rep))]
-async fn run_server(config: &Config, rep: Arc<Mutex<RoomsRepository>>) -> anyhow::Result<()> {
+async fn run_server(config: &Config, rep: RepReqChannel) -> anyhow::Result<()> {
     let addr = SocketAddr::from_str(&config.runtime.server_address)?;
     let make_svc = make_service_fn(move |_| {
-        let conf = config.clone();
+        // Why do we need 2 levels of clone?
+        let conf = config.clone(); // <---- one here
         let span = tracing::debug_span!("service creation");
-        let rep_clone = Arc::clone(&rep);
+        let rep_clone = rep.clone(); // <----- here
         async move {
             Ok::<_, Infallible>(service_fn(move |req: Request<Body>| {
                 let span = tracing::debug_span!("request span");
-                let conf = conf.clone();
-                let rep = Arc::clone(&rep_clone);
-                async move { Ok::<_, Infallible>(handle_req(req, rep, conf).await) }.instrument(span)
+                let rep = rep_clone.clone(); // <--- and the second one here
+                let conf = conf.clone(); // <---- here
+                async move { Ok::<_, Infallible>(handle_req(req, rep, conf).await) }
+                    .instrument(span)
             }))
-        }.instrument(span)
+        }
+        .instrument(span)
     });
     let server = Server::bind(&addr).serve(make_svc);
     let server = server.with_graceful_shutdown(shutdown_singal());
@@ -110,7 +94,7 @@ async fn run_server(config: &Config, rep: Arc<Mutex<RoomsRepository>>) -> anyhow
 #[tracing::instrument(skip(rep))]
 async fn handle_req(
     req: Request<Body>,
-    rep: Arc<Mutex<RoomsRepository>>,
+    rep: RepReqChannel,
     config: Config,
 ) -> Response<Body> {
     match (req.method(), req.uri().path()) {
@@ -122,7 +106,7 @@ async fn handle_req(
 #[tracing::instrument(skip(rep))]
 async fn new_room(
     req: Request<Body>,
-    rep: Arc<Mutex<RoomsRepository>>,
+    rep: RepReqChannel,
     config: Config,
 ) -> Response<Body> {
     // todo: check if both are within limits
@@ -152,8 +136,7 @@ async fn new_room(
     // only synchronous operations on it so that lock is not held
     // across multiple await points.
     // lock for the whole room creation process is really excessive.
-    let mut rep = rep.lock().await;
-    match create_new_room(&mut *rep, config, body).await {
+    match create_new_room(rep, config, body).await {
         Ok(rd) => {
             let body = match serde_json::to_vec(&rd) {
                 Ok(val) => val,
