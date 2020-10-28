@@ -2,7 +2,7 @@
 
 ## Some things I did not have time for
 - runtime task doesn't do anything with the runtime response yet
-- runtime task should authorize users
+- runtime task should authorize users # rather mqtt should authorize users, read and write preferences and all
 - runtime doesn't do anything in general
 - room repository should be handled in another task
 

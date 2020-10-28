@@ -1,3 +1,5 @@
+use futures::Future;
+use tokio::sync::mpsc;
 pub mod model;
 pub mod runtime;
 
@@ -12,13 +14,53 @@ impl From<&Room> for RoomEntry {
     }
 }
 
+pub enum RepReq {
+    CreateRoom{players_limit: usize, rounds: usize},
+    RemoveRoom{room: RoomEntry},
+    Close,
+}
+
+pub enum RepResp {
+    RoomCreated(Room),
+    RoomRemoved,
+}
+
 pub struct RoomsRepository {
     rooms: Vec<Option<RoomEntry>>,
 }
 
+pub type RepReqChannel = mpsc::Sender<(RepReq, mpsc::Sender<RepResp>)>;
+
 impl RoomsRepository {
     pub fn new() -> Self {
         Self { rooms: Vec::new() }
+    }
+
+    pub async fn send_req(tx: &mut RepReqChannel, req: RepReq) -> Option<RepResp> {
+        let (resp_tx, mut resp_rx) = mpsc::channel(0);
+        tx.send((req, resp_tx)).await;
+        resp_rx.recv().await
+    }
+
+    pub fn new_task() -> (impl Future<Output=()>, RepReqChannel) {
+        type ChanData = (RepReq, mpsc::Sender<RepResp>);
+        let (tx, mut rx): (mpsc::Sender<ChanData>, mpsc::Receiver<ChanData>) = mpsc::channel(256);
+        let mut room_rep = Self::new();
+        (async move {
+            while let Some((req, mut responder)) = rx.recv().await {
+                match req {
+                    RepReq::CreateRoom{players_limit, rounds} => {
+                        let rd = room_rep.create_room(players_limit, rounds);
+                        responder.send(RepResp::RoomCreated(rd)).await;
+                    }
+                    RepReq::RemoveRoom{room} => {
+                        room_rep.remove(room);
+                        responder.send(RepResp::RoomRemoved).await;
+                    }
+                    RepReq::Close => break,
+                }
+            }
+        }, tx)
     }
 
     pub fn remove(&mut self, room: RoomEntry) {
