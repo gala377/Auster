@@ -1,28 +1,23 @@
-# Issues
+# Things to do now
+- setup mongo db
+- setup mosquitto authentication with mongodb
+- create user for runtime on startup
+- add create user option for service
+- add redis persistance for mqtt messages.
+    https://github.com/fpagliughi/mqtt.rust.redis
+- then all of the runtime can be implemented.
+
 
 ## Some things I did not have time for
 - runtime task doesn't do anything with the runtime response yet
 - runtime task should authorize users # rather mqtt should authorize users, read and write preferences and all
 - runtime doesn't do anything in general
-- room repository should be handled in another task
 
 
 ## General issues
 
-- runtime subscribes to the runtime-channel so when it sends a value
-    there it also receives it. Channels should be splitted, one for
-    receiving values and another one for broadcast.
 - dynamic user creation with read, write permissions for channels.
 - we need to plan on possible messages.
-
-## MQTT things
-
-- mongodb or mysql integration
-- mqtt authorization
-- creating temporatry users for the runtime and the game
-- use redis resistance a sith wont clutter project directory
-    https://github.com/fpagliughi/mqtt.rust.redis
-
 
 ## General
 
