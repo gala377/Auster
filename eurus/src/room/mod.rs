@@ -4,10 +4,15 @@ use tracing::warn;
 pub mod model;
 pub mod runtime;
 
-use crate::room::model::Room;
+use crate::{config::Config, db, room::model::Room};
 
 #[derive(Ord, PartialOrd, Eq, PartialEq)]
 pub struct RoomEntry(pub usize);
+
+pub struct UserEntry {
+    username: u128,
+    password: u128,
+}
 
 impl From<&Room> for RoomEntry {
     fn from(room: &Room) -> Self {
@@ -27,15 +32,16 @@ pub enum RepResp {
     ClosingRepository,
 }
 
-pub struct RoomsRepository {
-    rooms: Vec<Option<RoomEntry>>,
+pub type RepReqChannel = mpsc::Sender<(RepReq, mpsc::Sender<RepResp>)>;
+pub struct DataRepository {
+    conn: db::Connection,
 }
 
-pub type RepReqChannel = mpsc::Sender<(RepReq, mpsc::Sender<RepResp>)>;
-
-impl RoomsRepository {
-    pub fn new() -> Self {
-        Self { rooms: Vec::new() }
+impl DataRepository {
+    pub async fn new(config: &Config) -> anyhow::Result<Self> {
+        Ok(Self {
+            conn: db::Connection::new(config).await?,
+        })
     }
 
     pub async fn send_req(tx: &mut RepReqChannel, req: RepReq) -> Option<RepResp> {
@@ -47,11 +53,13 @@ impl RoomsRepository {
         resp_rx.recv().await
     }
 
-    pub fn new_task() -> (impl Future<Output = ()>, RepReqChannel) {
+    pub async fn new_task(
+        config: &Config,
+    ) -> anyhow::Result<(impl Future<Output = ()>, RepReqChannel)> {
         type ChanData = (RepReq, mpsc::Sender<RepResp>);
         let (tx, mut rx): (mpsc::Sender<ChanData>, mpsc::Receiver<ChanData>) = mpsc::channel(256);
-        let mut room_rep = Self::new();
-        (
+        let mut room_rep = Self::new(config).await?;
+        Ok((
             async move {
                 while let Some((req, mut responder)) = rx.recv().await {
                     match req {
@@ -69,8 +77,6 @@ impl RoomsRepository {
                             let _ = responder.send(RepResp::RoomRemoved).await;
                         }
                         RepReq::Close => {
-                            // in case someone would like to wait on response channel
-                            // instead of a running task.
                             // Note that it does some cleanup after sending the message and whats
                             // more it even yields here so repositories task should still
                             // be awaited instead of using a channel.
@@ -82,49 +88,22 @@ impl RoomsRepository {
                 }
             },
             tx,
-        )
+        ))
     }
 
-    pub fn remove(&mut self, room: RoomEntry) {
-        let i = match self.find_room_index(room) {
-            Some(i) => i,
-            None => return,
-        };
-        self.rooms[i] = None;
+    fn remove(&mut self, room: RoomEntry) {
+        unimplemented!()
     }
 
-    pub fn create_room(&mut self, players_limit: usize, rounds: usize) -> Room {
-        match self.find_empty_space() {
-            Some(i) => {
-                let rd = Room::new(i, players_limit, rounds);
-                self.rooms[i] = Some(RoomEntry::from(&rd));
-                rd
-            }
-            None => {
-                let rd = Room::new(self.rooms.len(), players_limit, rounds);
-                self.rooms.push(Some(RoomEntry::from(&rd)));
-                rd
-            }
-        }
+    fn create_room(&mut self, players_limit: usize, rounds: usize) -> Room {
+        unimplemented!()
     }
 
-    fn find_empty_space(&self) -> Option<usize> {
-        for (i, v) in self.rooms.iter().enumerate() {
-            if let None = v {
-                return Some(i);
-            }
-        }
-        None
+    fn create_rt_user(&mut self, room: model::RoomId) -> UserEntry {
+        unimplemented!()
     }
 
-    fn find_room_index(&self, rd: RoomEntry) -> Option<usize> {
-        for (i, el) in self.rooms.iter().enumerate() {
-            if let Some(el) = el {
-                if *el == rd {
-                    return Some(i);
-                }
-            }
-        }
-        None
+    fn create_player_user(&mut self, room: model::RoomId) -> UserEntry {
+        unimplemented!()
     }
 }

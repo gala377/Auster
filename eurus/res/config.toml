@@ -3,6 +3,15 @@ host = "tcp://localhost:1883"
 user = ""
 password = ""
 
+[db]
+host = "mongodb://localhost:27017"
+user = ""
+password = ""
+database = "eurusDB"
+users_collection = "mqtt_users"
+
 [runtime]
 server_address = "127.0.0.1:3005"
 room_channel_prefix = "room"
+
+

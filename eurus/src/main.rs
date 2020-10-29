@@ -12,7 +12,7 @@ use tracing::{error, info};
 
 use eurus::{
     config::Config,
-    room::{RepReq, RepReqChannel, RoomsRepository},
+    room::{DataRepository, RepReq, RepReqChannel},
     service::{create_new_room, dto},
 };
 
@@ -35,14 +35,21 @@ async fn main() {
         eprintln!("logger couldn't be setup {}", e);
         return;
     }
-    let (task, mut room_rep_chan) = RoomsRepository::new_task();
+    let (task, mut room_rep_chan) = match DataRepository::new_task(&config).await {
+        Ok(val) => val,
+        Err(err) => {
+            eprintln!("could not create data repository: {}", err);
+            return;
+        }
+    };
     let room_rep_task = tokio::spawn(task);
     if let Err(e) = run_server(&config, room_rep_chan.clone()).await {
         eprintln!("server error: {}", e);
     }
-    RoomsRepository::send_req(&mut room_rep_chan, RepReq::Close).await;
+    DataRepository::send_req(&mut room_rep_chan, RepReq::Close).await;
     if let Err(err) = room_rep_task.await {
         eprintln!("couldn't join on the repository task: {}", err);
+        return;
     }
 }
 

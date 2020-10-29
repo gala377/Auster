@@ -3,7 +3,7 @@ use std::{pin::Pin, time::Duration};
 use crate::{
     config::Config,
     message,
-    room::{self, RepReq, RepReqChannel, RepResp, RoomsRepository},
+    room::{self, DataRepository, RepReq, RepReqChannel, RepResp},
     room::{model::Room, RoomEntry},
 };
 use futures::Stream;
@@ -51,7 +51,7 @@ pub async fn create_new_room(
     config: Config,
     room_req: dto::NewRoomReq,
 ) -> Result<dto::NewRoomResp> {
-    let rd = RoomsRepository::send_req(
+    let rd = DataRepository::send_req(
         &mut rep,
         RepReq::CreateRoom {
             players_limit: room_req.players_limit,
@@ -70,7 +70,7 @@ pub async fn create_new_room(
     let re = RoomEntry::from(&rd);
     let resp = dto::NewRoomResp::from(&rd);
     if let Err(err) = start_room_rt(rd, config).await {
-        RoomsRepository::send_req(&mut rep, RepReq::RemoveRoom { room: re }).await;
+        DataRepository::send_req(&mut rep, RepReq::RemoveRoom { room: re }).await;
         return Err(err);
     }
     Ok(resp)

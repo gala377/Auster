@@ -11,6 +11,7 @@ edition = "2018"
 
 hyper = "0.13"
 paho-mqtt = { git = "https://github.com/eclipse/paho.mqtt.rust" }
+mongodb = "1.1.1"
 
 rand = "0.7"
 chrono = "0.4"

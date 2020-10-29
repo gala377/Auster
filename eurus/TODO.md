@@ -1,6 +1,5 @@
 # Things to do now
-- setup mongo db
-- setup mosquitto authentication with mongodb
+- add mongodb runtime task for handling database requests
 - create user for runtime on startup
 - add create user option for service
 - add redis persistance for mqtt messages.
@@ -13,6 +12,8 @@
 - runtime task should authorize users # rather mqtt should authorize users, read and write preferences and all
 - runtime doesn't do anything in general
 
+## Some things for project
+- docker would be nice.
 
 ## General issues
 
