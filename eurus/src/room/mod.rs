@@ -6,23 +6,16 @@ pub mod runtime;
 
 use crate::{config::Config, db, room::model::Room};
 
-#[derive(Ord, PartialOrd, Eq, PartialEq)]
-pub struct RoomEntry(pub usize);
-
 pub struct UserEntry {
     username: u128,
     password: u128,
 }
 
-impl From<&Room> for RoomEntry {
-    fn from(room: &Room) -> Self {
-        Self(room.id)
-    }
-}
-
 pub enum RepReq {
     CreateRoom { players_limit: usize, rounds: usize },
-    RemoveRoom { room: RoomEntry },
+    RemoveRoom { room_id: model::RoomId },
+    CreateRuntimeUser { room_id: model::RoomId },
+    CreatePlayerUser { room_id: model::RoomId },
     Close,
 }
 
@@ -30,7 +23,11 @@ pub enum RepResp {
     RoomCreated(Room),
     RoomRemoved,
     ClosingRepository,
+    UserCreated(UserEntry),
+    Err(RepError),
 }
+
+pub struct RepError;
 
 pub type RepReqChannel = mpsc::Sender<(RepReq, mpsc::Sender<RepResp>)>;
 pub struct DataRepository {
@@ -71,10 +68,18 @@ impl DataRepository {
                             // let us just ignore an error here
                             let _ = responder.send(RepResp::RoomCreated(rd)).await;
                         }
-                        RepReq::RemoveRoom { room } => {
-                            room_rep.remove(room);
+                        RepReq::RemoveRoom { room_id } => {
+                            room_rep.remove_room(room_id);
                             // let us just ignore an error here
                             let _ = responder.send(RepResp::RoomRemoved).await;
+                        }
+                        RepReq::CreateRuntimeUser { room_id } => {
+                            let ud = room_rep.create_rt_user(room_id);
+                            let _ = responder.send(RepResp::UserCreated(ud)).await;
+                        }
+                        RepReq::CreatePlayerUser { room_id } => {
+                            let ud = room_rep.create_player_user(room_id);
+                            let _ = responder.send(RepResp::UserCreated(ud)).await;
                         }
                         RepReq::Close => {
                             // Note that it does some cleanup after sending the message and whats
@@ -91,11 +96,11 @@ impl DataRepository {
         ))
     }
 
-    fn remove(&mut self, room: RoomEntry) {
+    fn create_room(&mut self, players_limit: usize, rounds: usize) -> Room {
         unimplemented!()
     }
 
-    fn create_room(&mut self, players_limit: usize, rounds: usize) -> Room {
+    fn remove_room(&mut self, room: model::RoomId) {
         unimplemented!()
     }
 

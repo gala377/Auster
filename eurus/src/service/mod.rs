@@ -3,8 +3,7 @@ use std::{pin::Pin, time::Duration};
 use crate::{
     config::Config,
     message,
-    room::{self, DataRepository, RepReq, RepReqChannel, RepResp},
-    room::{model::Room, RoomEntry},
+    room::{self, DataRepository, RepReq, RepReqChannel, RepResp, model::Room},
 };
 use futures::Stream;
 use futures::StreamExt;
@@ -67,10 +66,10 @@ pub async fn create_new_room(
             ))
         }
     };
-    let re = RoomEntry::from(&rd);
     let resp = dto::NewRoomResp::from(&rd);
+    let room_id = rd.id;
     if let Err(err) = start_room_rt(rd, config).await {
-        DataRepository::send_req(&mut rep, RepReq::RemoveRoom { room: re }).await;
+        DataRepository::send_req(&mut rep, RepReq::RemoveRoom { room_id }).await;
         return Err(err);
     }
     Ok(resp)
