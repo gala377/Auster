@@ -188,7 +188,7 @@ async fn subscribe_default(
     for i in 0..players_limit {
         channels.push(format!("{}/{}/{}/write", ROOM_CHANNEL_PREFIX, room_id, i));
     }
-    let qos: Vec<i32> = vec![1; channels.len()];
+    let qos: Vec<i32> = vec![0; channels.len()];
     match cli.subscribe_many(&channels, &qos).await {
         Ok(qosv) => debug!("QoS granted: {:?}", qosv),
         Err(e) => {
@@ -252,7 +252,7 @@ async fn send_rt_start_msg(cli: &mut mqtt::AsyncClient, room_id: &str) -> Result
     let msg = mqtt::MessageBuilder::new()
         .topic(format!("{}/{}/rt/read", ROOM_CHANNEL_PREFIX, room_id))
         .payload(serde_json::to_string(&message::Response::RuntimeStarted).unwrap())
-        .qos(1)
+        .qos(0)
         .finalize();
     cli.publish(msg).await?;
     Ok(())
@@ -326,7 +326,7 @@ async fn send_resp(to: &str, resp: &message::Response, cli: &mut mqtt::AsyncClie
     let msg = mqtt::MessageBuilder::new()
         .topic(format!("{}/{}/rt/read", ROOM_CHANNEL_PREFIX, rd_id))
         .payload(serde_json::to_string(&resp).unwrap())
-        .qos(1)
+        .qos(0)
         .finalize();
     cli.publish(msg).await.unwrap();
 }
