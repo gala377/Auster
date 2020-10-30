@@ -1,6 +1,6 @@
 use tracing::info;
 
-use super::model::Room;
+use crate::room::model::Room;
 use crate::{config::Config, message, service};
 
 pub struct Runtime {
@@ -18,12 +18,12 @@ impl Runtime {
 
     pub(crate) async fn process_msg(
         &self,
-        player: Option<super::model::PlayerId>,
+        player: &str,
         msg: message::Request,
     ) -> service::Command {
         match player {
-            Some(player) => info!("msg from player {}: {:?}", player, msg),
-            None => info!("global msg {:?}", msg),
+            "rt" => info!("global msg {:?}", msg),
+            player => info!("msg from player {}: {:?}", player, msg),
         }
         service::Command::Skip
     }

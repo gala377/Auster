@@ -16,6 +16,9 @@ project and can be run as such.
 mosquitto server, (redis) and mongodb have to be configured and run
 separately.
 
+Simplified communication protocol for eurus server can be found in
+`docs` folder in the auster directory.
+
 ## About security
 System was build on mosquitto 1.6.9 and uses
 authentication plugin https://github.com/iegomez/mosquitto-go-auth#mongodb using mongodb backend

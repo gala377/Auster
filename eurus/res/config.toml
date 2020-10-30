@@ -5,13 +5,13 @@ password = ""
 
 [db]
 host = "mongodb://localhost:27017"
-user = ""
-password = ""
+user = "eurus_root"
+password = "root"
 database = "eurusDB"
 users_collection = "mqtt_users"
+rooms_collection = "rooms"
 
 [runtime]
 server_address = "127.0.0.1:3005"
-room_channel_prefix = "room"
 
 

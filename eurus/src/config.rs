@@ -21,10 +21,10 @@ pub struct Db {
     pub password: String,
     pub database: String,
     pub users_collection: String,
+    pub rooms_collection: String,
 }
 
 #[derive(Deserialize, Clone, Debug)]
 pub struct Runtime {
     pub server_address: String,
-    pub room_channel_prefix: String,
 }
